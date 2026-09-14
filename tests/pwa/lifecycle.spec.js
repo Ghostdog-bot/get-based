@@ -8,6 +8,7 @@ async function openInstalledApp(page, origin) {
     for (const key of ['emptyTour', 'tour']) localStorage.setItem(`labcharts-default-${key}`, 'completed');
   });
   await page.goto(`${origin}/app?dev-sw=1`, { waitUntil: 'networkidle' });
+  await expect(page.locator('html[data-app-ready]')).toBeAttached();
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => true));
   await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
   await page.evaluate(async () => {
@@ -30,7 +31,7 @@ test('installed shell opens lazy features and reloads with the origin disconnect
       return { ...body, iconsOk: await Promise.all(body.icons.map(icon => fetch(new URL(icon.src, url)).then(r => r.ok))) };
     });
     expect(manifest).toMatchObject({ id: '/app', start_url: '/app', display: 'standalone', iconsOk: [true, true, true] });
-    server.state.offline = true;
+    await server.disconnect();
     expect(await page.evaluate(() => fetch('/api/offline-proof').then(() => false, () => true))).toBe(true);
     await page.locator('.settings-btn').evaluate(button => button.click());
     await expect(page.locator('#settings-modal-overlay')).toHaveClass(/\bshow\b/);
@@ -97,13 +98,15 @@ test('failed update preserves the installed app; retry updates two tabs without 
     // A later visit offers the still-pending update again.
     await page.reload({ waitUntil: 'networkidle' });
     await expect(page.locator('#version-update-banner')).toBeVisible();
-    server.state.offline = true; // Applying an already cached build needs no download.
+    await server.disconnect(); // Applying an already cached build needs no download.
     await page.locator('[data-version-update-action="apply"]').click();
     await expect.poll(() => page.evaluate(() => window.APP_BUILD_ID).catch(() => null), { timeout: 30_000 }).toBe('build-b');
     await expect(other.locator('#version-update-banner')).toContainText('Reload');
     expect(await other.evaluate(() => window.APP_BUILD_ID)).toBe('build-a');
     await other.locator('[data-version-update-action="apply"]').click();
     await expect.poll(() => other.evaluate(() => window.APP_BUILD_ID).catch(() => null)).toBe('build-b');
+    await expect(page.locator('html[data-app-ready]')).toBeAttached();
+    await expect(other.locator('html[data-app-ready]')).toBeAttached();
     expect(await page.evaluate(() => localStorage.getItem('pwa-retained-data'))).toBe('retained');
     expect(await page.evaluate(async () => (await import('/js/state.js')).state.importedData.entries))
       .toEqual([{ date: '2026-09-01', markers: { 'biochemistry.glucose': 5.8 } }]);

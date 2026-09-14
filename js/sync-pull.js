@@ -54,6 +54,8 @@ var _reconcilePulledManualWearables = _reconcilePulledManualWearables || (async 
 /** @type {(...args: any[]) => any} */
 var _debug = _debug || (() => {});
 let _pulling = false;
+/** @type {Promise<void> | null} */
+let _pullPromise = null;
 const _chatPullRetryTimers = new Map();
 const ROUTSTR_SESSION_UPDATED_AT_KEY = 'labcharts-routstr-session-updated-at';
 const ROUTSTR_SESSION_KEYS = [
@@ -192,8 +194,12 @@ export function forcePull() {
     console.warn('[sync] Cannot force pull — Evolu not initialized');
     return undefined;
   }
-  _pulling = false;
   dbg('Force pull triggered');
+  // Let the current merge finish before taking a fresh replica snapshot.
+  // Resetting its guard lets an older pull overwrite a newer one mid-rebuild.
+  // The queued request still runs after a failure; the original caller keeps
+  // its rejected promise while this caller observes the fresh pull's result.
+  if (_pullPromise) return _pullPromise.then(onSyncReceived, onSyncReceived);
   return onSyncReceived();
 }
 
@@ -215,7 +221,16 @@ function scheduleChatPullRetry(profileId, delayMs) {
   _chatPullRetryTimers.set(profileId, timer);
 }
 
-export async function onSyncReceived() {
+export function onSyncReceived() {
+  if (_pullPromise) {
+    dbg('onSyncReceived skipped: already pulling');
+    return _pullPromise;
+  }
+  _pullPromise = receiveSync().finally(() => { _pullPromise = null; });
+  return _pullPromise;
+}
+
+async function receiveSync() {
   if (!_isSyncEnabled()) {
     dbg('onSyncReceived skipped: sync paused or off');
     return;

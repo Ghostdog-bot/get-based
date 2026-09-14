@@ -21,8 +21,7 @@ test('sync recovery events throttle resume pulls and notify network changes', as
     let visibleState = 'hidden';
     let enabled = true;
     let ready = false;
-    const pushCount = () => calls.filter(call => call === 'push').length;
-    const pullCount = () => calls.filter(call => call === 'pull').length;
+    const syncCount = () => calls.filter(call => call === 'sync').length;
     const notifyCount = () => calls.filter(call => call.startsWith('notify:')).length;
     const pageShow = persisted => {
       const event = new Event('pageshow');
@@ -45,8 +44,7 @@ test('sync recovery events throttle resume pulls and notify network changes', as
       recovery.configureSyncRecovery({
         isSyncEnabled: () => enabled,
         isEvoluReady: () => ready,
-        pushCurrentProfile: async () => { calls.push('push'); },
-        forcePull: () => { calls.push('pull'); },
+        syncNow: async () => { calls.push('sync'); },
         debug: message => { calls.push(`debug:${message}`); },
         notify: (message, type, duration) => { calls.push(`notify:${type}:${duration}:${message}`); },
       });
@@ -59,20 +57,18 @@ test('sync recovery events throttle resume pulls and notify network changes', as
 
       ready = true;
       document.dispatchEvent(new Event('visibilitychange'));
-      outcomes.visibilityResumeKicksOnce = pushCount() === 1
-        && pullCount() === 1
+      outcomes.visibilityResumeKicksOnce = syncCount() === 1
         && calls.some(call => call === 'debug:Tab resume (visibilitychange) - kicking syncNow');
 
       document.dispatchEvent(new Event('visibilitychange'));
-      outcomes.throttlesRepeatedVisibility = pushCount() === 1 && pullCount() === 1;
+      outcomes.throttlesRepeatedVisibility = syncCount() === 1;
 
       now += 31_000;
       pageShow(false);
-      outcomes.ignoresNonPersistedPageShow = pushCount() === 1 && pullCount() === 1;
+      outcomes.ignoresNonPersistedPageShow = syncCount() === 1;
 
       pageShow(true);
-      outcomes.persistedPageShowKicksAfterThrottle = pushCount() === 2
-        && pullCount() === 2
+      outcomes.persistedPageShowKicksAfterThrottle = syncCount() === 2
         && calls.some(call => call === 'debug:Tab resume (pageshow-persisted) - kicking syncNow');
 
       window.dispatchEvent(new Event('offline'));
@@ -81,16 +77,14 @@ test('sync recovery events throttle resume pulls and notify network changes', as
 
       now += 31_000;
       window.dispatchEvent(new Event('online'));
-      outcomes.onlineKicksAndNotifies = pushCount() === 3
-        && pullCount() === 3
+      outcomes.onlineKicksAndNotifies = syncCount() === 3
         && calls.some(call => call.includes('notify:success:3000:Back online'));
 
       enabled = false;
       window.dispatchEvent(new Event('offline'));
       now += 31_000;
       window.dispatchEvent(new Event('online'));
-      outcomes.disabledOnlineDoesNotKick = pushCount() === 3
-        && pullCount() === 3
+      outcomes.disabledOnlineDoesNotKick = syncCount() === 3
         && notifyCount() === 4;
     } finally {
       Date.now = original.now;
@@ -108,6 +102,43 @@ test('sync recovery events throttle resume pulls and notify network changes', as
     expect(passed, name).toBe(true);
   }
 });
+
+for (const rejectActive of [false, true]) {
+test(`forced pulls wait for an active pull before reading a fresh replica (${rejectActive ? 'rejected' : 'fulfilled'})`, async ({ page }) => {
+  await page.goto('/app');
+  const result = await page.evaluate(async rejectActive => {
+    const pull = await import('/js/sync-pull.js');
+    const tombstones = await import('/js/sync-tombstones.js');
+    tombstones.configureSyncTombstones({ getEvolu: () => null, getTombstoneQuery: () => null, isSyncEnabled: () => false });
+    let release, entered;
+    const blocked = new Promise(resolve => { release = resolve; });
+    const started = new Promise(resolve => { entered = resolve; });
+    let calls = 0;
+    pull.configureSyncPull({
+      getEvolu: () => ({ getQueryRows: () => [] }), getProfileQuery: () => ({}), isSyncEnabled: () => true,
+      pushDirtyProfiles: async () => {
+        calls++;
+        if (calls === 1) {
+          entered();
+          await blocked;
+          if (rejectActive) throw new Error('active pull failed');
+        }
+        return { failed: 0, skipped: 0 };
+      },
+    });
+    const initial = pull.onSyncReceived();
+    const originalResult = initial.then(() => 'fulfilled', error => error.message);
+    await started;
+    const forced = pull.forcePull();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const beforeRelease = calls;
+    release();
+    await forced;
+    return { beforeRelease, calls, pulling: pull.isSyncPulling(), original: await originalResult };
+  }, rejectActive);
+  expect(result).toEqual({ beforeRelease: 1, calls: 2, pulling: false, original: rejectActive ? 'active pull failed' : 'fulfilled' });
+});
+}
 
 test('sync pull browser force paths update status and skip unsafe rows', async ({ page }) => {
   await page.goto('/app', { waitUntil: 'load' });
