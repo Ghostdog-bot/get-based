@@ -1965,6 +1965,7 @@ describe('AI provider request contracts', () => {
       id: 'managed-transport-test',
       ai: {
         isCredentialOwned: provider => provider === 'openrouter',
+        requestProcessingApproval: async () => true,
         authorizeRequest: async () => true,
         isProviderCallOwned: ({ provider }) => provider === 'openrouter',
         callProvider,
@@ -1994,6 +1995,7 @@ describe('AI provider request contracts', () => {
       id: 'credentialless-managed-transport-test',
       ai: {
         isCredentialOwned: provider => provider === 'openrouter',
+        requestProcessingApproval: async () => true,
         authorizeRequest: async () => true,
         isProviderCallOwned: ({ provider }) => provider === 'openrouter',
         callProvider,
