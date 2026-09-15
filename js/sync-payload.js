@@ -19,6 +19,12 @@ export {
   _PER_ROW_DECOMPRESSED_CAP_BYTES, MAX_SYNC_PAYLOAD_BYTES, parseSyncPayload,
 } from './sync-payload-codec.js';
 
+/** @param {any[]} rows @param {string} profileId */
+export function latestProfileRow(rows, profileId) {
+  return (rows || []).filter(row => row?.profileId === profileId)
+    .sort((a, b) => (Date.parse(b?.syncedAt || '') || 0) - (Date.parse(a?.syncedAt || '') || 0))[0];
+}
+
 /** @type {{ getProfiles: () => any[] }} */
 const syncPayloadDeps = {
   getProfiles: () => {
@@ -65,12 +71,15 @@ export function disablePhase2CutoverFlag(profileId) {
 
 /** @param {string} profileId
  * @param {any} importedData
+ * @param {any} [remoteChatData]
  */
-export async function buildSyncPayload(profileId, importedData) {
+export async function buildSyncPayload(profileId, importedData, remoteChatData) {
   const profiles = syncPayloadDeps.getProfiles();
   const profile = selectSyncedProfile(profiles.find(p => p.id === profileId));
   const aiSettings = await collectAISettings();
-  const chatData = await collectChatData(profileId);
+  const localChatData = await collectChatData(profileId);
+  const chatData = remoteChatData
+    ? (await import('./sync-chat-merge.js')).mergeChatData(remoteChatData, localChatData) : localChatData;
   const displayPrefs = collectDisplayPrefs(profileId);
   // Strip wearable OAuth credentials before sync. Per-row LWW would let a stale
   // device resurrect a disconnected vendor or overwrite a freshly-rotated
