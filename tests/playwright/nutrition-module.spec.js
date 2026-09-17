@@ -2059,13 +2059,13 @@ test('the meal editor switches visual models directly and returns from AI Settin
   await expect(page.locator('#settings-modal-overlay')).toBeVisible();
   await expect(page.locator('#modal-overlay')).toBeVisible();
   await page.locator('#openrouter-model-select').selectOption('anthropic/claude-opus-5');
-  await expect(page.locator('[data-settings-action="set-nutrition-ai-route"] option').first()).toContainText('Follow chat assistant — Claude Opus 5');
+  await expect(page.locator('[data-settings-action="set-nutrition-ai-route"] option').first()).toHaveText(/^Follow chat assistant — (Anthropic: )?Claude Opus 5$/);
   await page.locator('#settings-modal .modal-close').click();
 
   await expect(page.locator('#settings-modal-overlay')).not.toBeVisible();
   await expect(page.locator('#modal-overlay')).toBeVisible();
   await expect(page.locator('#nutrition-meal-name')).toHaveValue('Draft rice bowl');
-  await expect(page.locator('[data-nutrition-model-route] option').first()).toContainText('Follow chat assistant · Claude Opus 5');
+  await expect(page.locator('[data-nutrition-model-route] option').first()).toHaveText(/^Follow chat assistant · (Anthropic: )?Claude Opus 5$/);
   await expect(mealSelector.locator('option:checked')).toContainText('Claude Opus 5');
   await page.locator('[data-nutrition-model-route]').selectOption(JSON.stringify({ provider: 'openrouter', model: 'x-ai/grok-4.6' }));
   await expect(page.locator('[data-nutrition-model-route] option:checked')).toContainText('Grok 4.6');

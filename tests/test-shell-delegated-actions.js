@@ -162,7 +162,7 @@ assert('App shell injects Chat modal close without a view bridge lookup',
 assert('App shell wires Chat prompt consumers without window globals',
   appShellHooksSrc.includes("import { configureBiologyScoresRuntimeDeps } from './biology-scores-runtime.js'")
     && appShellHooksSrc.includes("import { configureContextCardLifestyleRuntimeDeps } from './context-card-lifestyle-runtime.js'")
-    && appShellHooksSrc.includes('configureBiologyScoresRuntimeDeps({ navigate, openChatPanel, showDetailModal, useChatPrompt });')
+    && appShellHooksSrc.includes('configureBiologyScoresRuntimeDeps({ navigate, openChatPanel, showDetailModal, useChatPrompt, prepareContext: loadLightSunModulesForPersistedState });')
     && appShellHooksSrc.includes('configureContextCardLifestyleRuntimeDeps({ closeModal, navigate, openChatPanel, useChatPrompt });'));
 
 assert('App shell injects Biology Score context navigation without bridge or window fallbacks',
@@ -249,7 +249,7 @@ assert('App shell injects Lens page navigation without bridge or window fallback
 assert('App shell injects crypto cross-tab refresh callbacks without bridge lookups',
   appShellHooksSrc.includes('configureCryptoProfileDeps,')
     && appShellHooksSrc.includes("from './crypto.js';")
-    && appShellHooksSrc.includes('configureCryptoProfileDeps({ buildSidebar, navigate });'));
+    && appShellHooksSrc.includes('configureCryptoProfileDeps({ buildSidebar, navigate, invalidateData: invalidateActiveDataCache });'));
 
 assert('App shell injects Cycle view callbacks without bridge lookups',
   appShellHooksSrc.includes("import { configureCycleRuntimeDeps } from './cycle-runtime.js'")

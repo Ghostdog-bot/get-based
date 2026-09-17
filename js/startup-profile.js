@@ -2,6 +2,7 @@
 // startup-profile.js - profile migration, active-profile load, and UI state
 
 import { state } from './state.js';
+import { rememberProfileData } from './profile-data-writes.js';
 import {
   saveProfiles,
   getActiveProfileId,
@@ -97,6 +98,8 @@ export async function initializeProfileData() {
       migrateProfileData(state.importedData);
     } catch (e) {}
   }
+  // Empty profiles also need a baseline before the first unsaved edit.
+  rememberProfileData(state.importedData);
   // Profile switches already hydrate this local-only aggregate. Initial boot
   // must do the same before Dashboard/Body render or a hard refresh makes
   // saved meals appear to have vanished until the nutrition editor is opened.

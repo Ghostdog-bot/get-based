@@ -73,6 +73,7 @@ import {
   saveImportedData,
   updateHeaderDates,
   updateHeaderRangeToggle,
+  invalidateActiveDataCache,
 } from './data.js';
 import { configureDnaRuntimeDeps } from './dna-runtime.js';
 import { configureEMFRuntimeDeps } from './emf-runtime.js';
@@ -283,7 +284,7 @@ configureNavRuntime({ navigate, openCreateMarkerModal });
 configureClientListRuntimeDeps({ navigate, renderProfileButton });
 configureCategoryCustomizationRuntimeDeps({ buildSidebar, navigate });
 configureCategoryPageViewDeps({ renameCategory });
-configureCryptoProfileDeps({ buildSidebar, navigate });
+configureCryptoProfileDeps({ buildSidebar, navigate, invalidateData: invalidateActiveDataCache });
 configureCycleRuntimeDeps({
   closeModal,
   loadImportStylesheet,
@@ -318,7 +319,7 @@ configureLightSunShellLoaderDeps({
   openProfileLocationEditor,
 });
 configureBiologyScoreContextAIDeps({ navigate });
-configureBiologyScoresRuntimeDeps({ navigate, openChatPanel, showDetailModal, useChatPrompt });
+configureBiologyScoresRuntimeDeps({ navigate, openChatPanel, showDetailModal, useChatPrompt, prepareContext: loadLightSunModulesForPersistedState });
 configureDashboardWidgetRuntimeDeps({ navigate, openChatPanel, showDetailModal });
 configureDashboardRecommendationRuntimeDeps({
   detectWearableTrendSlots,

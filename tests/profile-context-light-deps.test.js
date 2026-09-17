@@ -33,6 +33,26 @@ afterEach(() => {
 });
 
 describe('profile context light dependencies', () => {
+  it.each([
+    ['sunSessions', false], ['deviceSessions', false],
+    ['sunSessions', true], ['deviceSessions', true],
+  ])('keeps incomplete %s rollups unknown (active: %s)', (key, active) => {
+    const session = { startedAt: Date.now(), endedAt: active ? null : Date.now(), doses: null };
+    state.importedData[key] = [session];
+    configureProfileContextLightDeps({ rollingVitaminDIU: () => 0, rollingChannelTotals: () => ({ circadian: 0 }) });
+    expect(getBiologyProfileContext().light).toMatchObject({
+      vitD7: null, circadian7: null, lowVitaminDSynthesis: false, lowCircadianLight: false,
+    });
+    session.endedAt = Date.now();
+    session.doses = {};
+    expect(getBiologyProfileContext().light).toMatchObject({
+      vitD7: 0, circadian7: 0, lowVitaminDSynthesis: true, lowCircadianLight: true,
+    });
+    session.doses = null;
+    session.endedAt -= 8 * 86400000;
+    expect(getBiologyProfileContext().light.vitD7).toBe(0);
+  });
+
   it('uses injected light rollups when building Biology Score context', () => {
     const rollingChannelTotals = vi.fn(() => ({ circadian: 250 }));
     const rollingVitaminDIU = vi.fn(() => 1800);
@@ -61,6 +81,16 @@ describe('profile context light dependencies', () => {
     });
     expect(profileContextSource).not.toContain("from './sun-channel-metrics.js'");
     expect(sunSource).toContain('configureProfileContextLightDeps({ rollingChannelTotals, rollingVitaminDIU });');
+  });
+
+  it('does not infer low vitamin-D synthesis from an empty tracker after lazy loading', () => {
+    state.importedData = { entries: [], lightCircadian: {} };
+    const cold = getBiologyProfileContext();
+    configureProfileContextLightDeps({ rollingVitaminDIU: () => 0, rollingChannelTotals: () => ({ circadian: 0 }) });
+    const warm = getBiologyProfileContext();
+    expect(warm.light.lowVitaminDSynthesis).toBe(false);
+    expect(warm.contextFlags).toEqual(cold.contextFlags);
+    expect(warm.lowSunlightExposure).toBe(cold.lowSunlightExposure);
   });
 
   it('reads the current context-card schema for deterministic modifiers', () => {

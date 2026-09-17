@@ -5,7 +5,7 @@ import { isChatModuleLoaded, loadChatModule } from './chat-loader.js';
 import { state } from './state.js';
 import {
   reconcileManualMetricTombstones,
-  refreshManualSummary,
+  isManualMetricTombstoned,
 } from './wearables-manual.js';
 
 /** @type {Record<string, (...args: any[]) => any>} */
@@ -84,11 +84,19 @@ export async function refreshProfileWearables(profileId, biometrics) {
 // from the user's perspective.
 export async function reconcilePulledManualWearables(profileId, merged) {
   if (!profileId || profileId !== state.currentProfile || !merged || typeof merged !== 'object') return false;
-  state.importedData = merged;
-  const result = await reconcileManualMetricTombstones(profileId);
-  if (!result || ((result.prunedRows || 0) === 0 && (result.prunedLegacy || 0) === 0)) return false;
-  await refreshManualSummary(profileId);
-  return true;
+  // Reconcile the draft without exposing it as live data across an await.
+  const result = await reconcileManualMetricTombstones(profileId, merged);
+  if (!result || result.skipped) return false;
+  let changed = !!(result.prunedRows || result.prunedLegacy);
+  // L1 histories are device-local. A local rebuild cannot replace this shared
+  // summary: invalidate only manual latest readings explicitly deleted by pull.
+  for (const [metric, value] of Object.entries(merged.wearableSummary?.metrics || {})) {
+    if (value?.primarySource === 'manual' && isManualMetricTombstoned(metric, value.latestDate, merged)) {
+      delete merged.wearableSummary.metrics[metric];
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 export function refreshProfileButton() {

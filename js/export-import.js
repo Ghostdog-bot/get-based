@@ -1,8 +1,10 @@
 // @ts-check
 // export-import.js — JSON import/restore helpers for the export facade.
 
+import { mergeBiologyScoreAIRecords } from './biology-score-persistence.js';
 import { getErrorMessage } from './caught-error.js';
 import { state } from './state.js';
+import { adoptProfileData } from './profile-data-writes.js';
 import { showNotification, isDebugMode } from './utils.js';
 import { saveImportedData, saveImportedDataForProfile, invalidateActiveDataCache } from './data.js';
 import { getProfiles, profileStorageKey, createProfile, updateProfileMeta, loadProfile, migrateProfileData } from './profile.js';
@@ -427,6 +429,15 @@ export function importDataJSON(file) {
         if (json.biologyScoreContextAI && typeof json.biologyScoreContextAI === 'object') {
           state.importedData.biologyScoreContextAI = json.biologyScoreContextAI;
         }
+        // Merge saved range/window variants, retaining the latest matching evidence.
+        if (json.biologyScoreAI && typeof json.biologyScoreAI === 'object' && !Array.isArray(json.biologyScoreAI)) {
+          state.importedData.biologyScoreAI ||= {};
+          for (const [id, answer] of Object.entries(json.biologyScoreAI)) {
+            if (['__proto__', 'constructor', 'prototype'].includes(id) || !answer || typeof answer.text !== 'string') continue;
+            const existing = state.importedData.biologyScoreAI[id];
+            state.importedData.biologyScoreAI[id] = mergeBiologyScoreAIRecords(existing, answer);
+          }
+        }
         if (json.contextSourceSettings && typeof json.contextSourceSettings === 'object') {
           state.importedData.contextSourceSettings = json.contextSourceSettings;
         }
@@ -552,7 +563,7 @@ export function importDataJSON(file) {
         const mealMsg = mealCount ? ` and ${mealCount} meal${mealCount === 1 ? '' : 's'}` : '';
         showNotification(`Imported ${count} date entr${count === 1 ? 'y' : 'ies'}${mealMsg}${profileMsg}`, 'success');
       } catch (err) {
-        if (rollback && state.currentProfile === rollbackProfile) { state.importedData = JSON.parse(rollback); invalidateActiveDataCache(); }
+        if (rollback && state.currentProfile === rollbackProfile) { adoptProfileData(state.importedData, JSON.parse(rollback)); invalidateActiveDataCache(); }
         clearDemoLoadingProfile();
         showNotification('Could not import JSON: ' + getErrorMessage(err), 'error');
       } finally {
