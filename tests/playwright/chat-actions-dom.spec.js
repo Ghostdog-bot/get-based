@@ -236,7 +236,7 @@ test('chat action browser coverage handles copy and regenerate branches', async 
       chatActions.copyMessage(1);
       await flush();
       outcomes.copyMessageSuccessWritesAndMarksCopied =
-        copied[0] === 'Assistant answer'
+        copied[0] === 'Assistant answer\n\nAI-generated'
         && successBtn.textContent.includes('Copied')
         && timers.some(timer => timer.delay === 1500);
       timers.pop()?.fn();

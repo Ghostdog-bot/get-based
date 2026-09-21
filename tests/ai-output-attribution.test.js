@@ -12,9 +12,13 @@ describe('AI output attribution', () => {
     expect(getAIOutputAttribution({ agentId: 'grok' })).toBe('Written with Grok');
   });
 
-  it('does not attribute unrelated providers or similarly spelled words', () => {
-    expect(getAIOutputAttribution({ agentId: 'codex', modelId: 'gpt-5.6-sol' })).toBe('');
-    expect(getAIOutputAttribution({ provider: 'custom', modelDisplay: 'Grokking Health' })).toBe('');
-    expect(getAIOutputAttribution({ provider: 'venice', modelId: 'llama-3.3' })).toBe('');
+  it('labels other AI output without inventing a provider identity', () => {
+    expect(getAIOutputAttribution({ agentId: 'codex', modelId: 'gpt-5.6-sol' })).toBe('AI-generated');
+    expect(getAIOutputAttribution({ provider: 'custom', modelDisplay: 'Grokking Health' })).toBe('AI-generated');
+    expect(getAIOutputAttribution({ provider: 'venice', modelId: 'llama-3.3' })).toBe('AI-generated');
+    expect(getAIOutputAttribution({ provider: 'phala', modelId: 'z-ai/glm-5.3-flash' })).toBe('AI-generated');
+    expect(getAIOutputAttribution({ provider: 'near-ai' })).toBe('AI-generated');
+    expect(getAIOutputAttribution({})).toBe('AI-generated');
+    expect(getAIOutputAttribution({ modelDisplay: '<script>untrusted</script>' })).toBe('AI-generated');
   });
 });

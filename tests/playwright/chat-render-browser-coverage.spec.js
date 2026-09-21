@@ -174,8 +174,10 @@ test('chat render browser coverage handles lens sources and rich transcript UI',
         && costFootnote.includes('300 tokens')
         && costFootnote.includes('web')
         && costFootnote.includes('encrypted');
-      outcomes.grokOutputIsVisiblyAttributed = rendered.querySelectorAll('.chat-provider-attribution').length === 1
-        && rendered.querySelector('.chat-provider-attribution')?.textContent === 'Written with Grok';
+      const outputLabels = [...rendered.querySelectorAll('.chat-provider-attribution')].map(el => el.textContent);
+      outcomes.grokOutputIsVisiblyAttributed = outputLabels.includes('Written with Grok');
+      outcomes.otherAIOutputIsVisiblyAttributed = outputLabels.includes('AI-generated')
+        && !rendered.querySelector('.chat-user .chat-provider-attribution');
       outcomes.assistantExtrasRender = rendered.textContent.includes('[stopped]')
         && rendered.textContent.includes('[output limit reached - ask "continue" to finish]')
         && rendered.querySelector('.chat-action-bar') !== null
