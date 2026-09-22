@@ -243,6 +243,20 @@ test('chat action browser coverage handles copy and regenerate branches', async 
       outcomes.copyMessageSuccessResetTimerRestoresCopy = successBtn.textContent.includes('Copy');
       successBtn.remove();
 
+      state.chatHistory.push(
+        { role: 'assistant', content: 'Provider unavailable', error: true },
+        { role: 'assistant', content: 'Partial answer', stopped: true },
+        { role: 'assistant', content: 'Output limit reached', truncated: true, agentId: 'grok' },
+      );
+      chatActions.copyMessage(2);
+      chatActions.copyMessage(3);
+      chatActions.copyMessage(4);
+      await flush();
+      outcomes.copyErrorsWithoutAttributionButKeepPartialOutputLabels =
+        copied[1] === 'Provider unavailable'
+        && copied[2] === 'Partial answer\n\nAI-generated'
+        && copied[3] === 'Output limit reached\n\nWritten with Grok';
+
       Object.defineProperty(navigator, 'clipboard', {
         configurable: true,
         value: { writeText: async () => { throw new Error('blocked'); } },

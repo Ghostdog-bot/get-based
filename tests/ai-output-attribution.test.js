@@ -5,6 +5,15 @@ import {
 } from '../js/cli-agent-brand-assets.js';
 
 describe('AI output attribution', () => {
+  it('excludes error records but retains stopped and truncated model output', () => {
+    for (const provider of ['openrouter', 'grok']) {
+      expect(getAIOutputAttribution({ provider, error: true })).toBe('');
+      const label = provider === 'grok' ? 'Written with Grok' : 'AI-generated';
+      expect(getAIOutputAttribution({ provider, stopped: true })).toBe(label);
+      expect(getAIOutputAttribution({ provider, truncated: true })).toBe(label);
+    }
+  });
+
   it('recognizes Grok CLI and Grok models reached through another provider', () => {
     expect(getAIOutputAttribution({ agentId: 'grok', modelId: 'default' })).toBe('Written with Grok');
     expect(getAIOutputAttribution({ provider: 'openrouter', modelId: 'x-ai/grok-4.1-fast' })).toBe('Written with Grok');

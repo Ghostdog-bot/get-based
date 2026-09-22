@@ -24,8 +24,11 @@ export function renderCLIAgentBrandIcon(agentId) {
 
 // Call only for known AI output. This visible attribution is not a watermark,
 // provider attestation, or a claim that imported content has been verified.
-/** @param {{agentId?: unknown, provider?: unknown, modelId?: unknown, model?: unknown, modelDisplay?: unknown}} [identity] */
+/** @param {{agentId?: unknown, provider?: unknown, modelId?: unknown, model?: unknown, modelDisplay?: unknown, error?: unknown}} [identity] */
 export function getAIOutputAttribution(identity = {}) {
+  // Error records contain application/provider diagnostics, not model output.
+  // Stopped or truncated responses remain normal output and retain attribution.
+  if (identity.error) return '';
   const agentId = String(identity.agentId || '').trim().toLowerCase();
   const provider = String(identity.provider || '').trim().toLowerCase();
   const grok = agentId === 'grok' || ['grok', 'xai', 'x-ai'].includes(provider)

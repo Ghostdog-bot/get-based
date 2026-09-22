@@ -219,6 +219,18 @@ test('chat render browser coverage handles lens sources and rich transcript UI',
         && seenSummaryStyle.backgroundColor !== 'rgba(0, 0, 0, 0)';
 
       state.currentThreadId = 'render-window-coverage';
+      state.chatHistory = [
+        { role: 'assistant', content: 'Provider unavailable', error: true },
+        { role: 'assistant', content: 'Grok unavailable', agentId: 'grok', error: true },
+        { role: 'assistant', content: 'Partial answer', stopped: true },
+        { role: 'assistant', content: 'Limited answer', agentId: 'grok', truncated: true },
+      ];
+      chatRender.renderChatMessages();
+      outcomes.errorRecordsHaveNoAttributionButPartialOutputKeepsLabels =
+        !rendered.querySelector('#chat-msg-0 .chat-provider-attribution')
+        && !rendered.querySelector('#chat-msg-1 .chat-provider-attribution')
+        && rendered.querySelector('#chat-msg-2 .chat-provider-attribution')?.textContent === 'AI-generated'
+        && rendered.querySelector('#chat-msg-3 .chat-provider-attribution')?.textContent === 'Written with Grok';
       state.chatHistory = Array.from({ length: 260 }, (_, index) => ({
         role: index % 2 ? 'assistant' : 'user',
         content: `Windowed message ${index}`,
