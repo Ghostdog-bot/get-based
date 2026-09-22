@@ -1,6 +1,7 @@
 // @ts-check
 // voice-player.js — one-at-a-time blob playback with URL and abort cleanup.
 
+/** @param {unknown} [reason] */
 function abortError(reason) {
   return reason instanceof Error
     ? reason
@@ -164,6 +165,7 @@ export class VoicePlayer {
     this.playbackActivated = false;
     /** @type {Promise<void> | null} */
     this.audioUnlockPromise = null;
+    this.playbackGeneration = 0;
     /** @type {((reason: Error) => void) | null} */
     this.rejectCurrent = null;
   }
@@ -277,6 +279,7 @@ export class VoicePlayer {
   }
 
   stop(reason) {
+    this.playbackGeneration += 1;
     const reject = this.rejectCurrent;
     this.rejectCurrent = null;
     const reader = this.streamReader;
@@ -319,11 +322,16 @@ export class VoicePlayer {
   async playWithAudioContext(blob, { signal, rate }) {
     const context = this.audioContext;
     if (!context) throw new Error('Web Audio is unavailable.');
+    const generation = this.playbackGeneration;
+    const assertCurrent = () => {
+      if (signal?.aborted || generation !== this.playbackGeneration) throw abortError(signal?.reason);
+    };
     await this.ensureAudioContextReady();
+    assertCurrent();
     const bytes = await blob.arrayBuffer();
-    if (signal?.aborted) throw abortError(signal.reason);
+    assertCurrent();
     const buffer = await context.decodeAudioData(bytes.slice(0));
-    if (signal?.aborted) throw abortError(signal.reason);
+    assertCurrent();
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.playbackRate.value = Math.max(0.5, Math.min(2, Number(rate) || 1));
@@ -356,7 +364,10 @@ export class VoicePlayer {
       };
       source.onended = onEnded;
       signal?.addEventListener('abort', onAbort, { once: true });
-      source.start();
+      try { source.start(); } catch (error) {
+        cleanup();
+        reject(error);
+      }
     });
   }
 
@@ -406,11 +417,47 @@ export class VoicePlayer {
       audio.addEventListener('ended', onEnded, { once: true });
       audio.addEventListener('error', onError, { once: true });
       signal?.addEventListener('abort', onAbort, { once: true });
-      Promise.resolve(audio.play()).catch(error => {
+      try {
+        Promise.resolve(audio.play()).catch(error => {
+          cleanup();
+          reject(error);
+        });
+      } catch (error) {
         cleanup();
         reject(error);
-      });
+      }
     });
+  }
+
+  async bufferStream(stream, contentType, signal) {
+    this.stop();
+    const generation = this.playbackGeneration;
+    const reader = stream.getReader();
+    const controller = new AbortController();
+    const abort = () => controller.abort(signal?.reason);
+    const stop = reason => controller.abort(reason);
+    this.streamReader = reader;
+    this.rejectCurrent = stop;
+    signal?.addEventListener('abort', abort, { once: true });
+    const chunks = [];
+    try {
+      while (true) {
+        if (signal?.aborted || controller.signal.aborted || generation !== this.playbackGeneration) throw abortError(signal?.reason);
+        const { done, value } = await readStreamChunk(reader, controller.signal);
+        if (done) break;
+        chunks.push(value);
+      }
+      if (controller.signal.aborted || generation !== this.playbackGeneration) throw abortError(signal?.reason);
+      return new Blob(chunks, { type: contentType });
+    } catch (error) {
+      void reader.cancel(error).catch(() => {});
+      throw error;
+    } finally {
+      signal?.removeEventListener('abort', abort);
+      if (this.streamReader === reader) this.streamReader = null;
+      if (this.rejectCurrent === stop) this.rejectCurrent = null;
+      try { reader.releaseLock(); } catch {}
+    }
   }
 
   /**
@@ -430,10 +477,10 @@ export class VoicePlayer {
     const mimeType = baseMimeType(contentType);
     if (signal?.aborted) throw abortError(signal.reason);
     if (!progressive || !this.supportsStreaming(mimeType)) {
-      this.stop();
-      const blob = await new Response(stream, {
-        headers: { 'Content-Type': contentType },
-      }).blob();
+      const buffering = this.bufferStream(stream, contentType, signal);
+      const generation = this.playbackGeneration;
+      const blob = await buffering;
+      if (generation !== this.playbackGeneration) throw abortError(signal?.reason);
       return this.play(blob, { signal, rate });
     }
 
@@ -442,9 +489,10 @@ export class VoicePlayer {
       : null;
     if (!prepared) {
       if (!this.primeStreamPlayback(mimeType, rate)) {
-        const blob = await new Response(stream, {
-          headers: { 'Content-Type': contentType },
-        }).blob();
+        const buffering = this.bufferStream(stream, contentType, signal);
+        const generation = this.playbackGeneration;
+        const blob = await buffering;
+        if (generation !== this.playbackGeneration) throw abortError(signal?.reason);
         return this.play(blob, { signal, rate });
       }
     }
@@ -460,6 +508,7 @@ export class VoicePlayer {
 
     return new Promise((resolve, reject) => {
       let settled = false;
+      const lifecycle = new AbortController();
       let receivedBytes = 0;
       let readerDone = false;
       /** @type {ReadableStreamDefaultReader<Uint8Array> | null} */
@@ -476,6 +525,7 @@ export class VoicePlayer {
       const cleanup = reason => {
         if (settled) return;
         settled = true;
+        lifecycle.abort(reason);
         signal?.removeEventListener('abort', onAbort);
         audio.removeEventListener('ended', onEnded);
         audio.removeEventListener('error', onAudioError);
@@ -534,17 +584,19 @@ export class VoicePlayer {
 
       void (async () => {
         try {
-          await waitForMediaSourceOpen(mediaSource, signal);
+          await waitForMediaSourceOpen(mediaSource, lifecycle.signal);
+          if (settled) return;
           sourceBuffer = mediaSource.addSourceBuffer(mimeType);
           this.sourceBuffer = sourceBuffer;
           reader = stream.getReader();
           this.streamReader = reader;
           while (true) {
             const { done, value } = await reader.read();
+            if (settled) return;
             if (done) break;
             if (!value?.byteLength) continue;
             receivedBytes += value.byteLength;
-            await appendSourceBuffer(sourceBuffer, value, signal);
+            await appendSourceBuffer(sourceBuffer, value, lifecycle.signal);
           }
           readerDone = true;
           releaseReader();
@@ -580,7 +632,9 @@ export class VoicePlayer {
     this.audioContext ||= this.audioContextFactory();
     const context = this.audioContext;
     if (!context) throw new Error('Web Audio is unavailable for local speech streaming.');
+    const generation = this.playbackGeneration;
     await this.ensureAudioContextReady();
+    if (signal?.aborted || generation !== this.playbackGeneration) throw abortError(signal?.reason);
 
     const internalController = new AbortController();
     const onExternalAbort = () => internalController.abort(signal?.reason);
@@ -596,6 +650,7 @@ export class VoicePlayer {
     let playbackStarted = false;
     let streamDone = false;
     let waitingForChunk = false;
+    const sessionSources = new Set();
 
     const schedule = (samples, sampleRate) => {
       const buffer = context.createBuffer(1, samples.length, sampleRate);
@@ -605,6 +660,7 @@ export class VoicePlayer {
       source.playbackRate.value = Math.max(0.5, Math.min(2, Number(rate) || 1));
       source.connect(context.destination);
       this.scheduledAudioSources.add(source);
+      sessionSources.add(source);
       const startTime = Math.max(nextStartTime, context.currentTime + 0.02);
       nextStartTime = startTime + buffer.duration / source.playbackRate.value;
       receivedSamples += samples.length;
@@ -612,6 +668,7 @@ export class VoicePlayer {
         source.onended = () => {
           source.onended = null;
           this.scheduledAudioSources.delete(source);
+          sessionSources.delete(source);
           try { source.disconnect(); } catch {}
           if (!streamDone && this.scheduledAudioSources.size === 0) {
             waitingForChunk = true;
@@ -653,12 +710,40 @@ export class VoicePlayer {
       if (internalController.signal.aborted) {
         throw abortError(internalController.signal.reason);
       }
-      if (!receivedSamples || !lastPlayback) {
+      // schedule() assigns this promise from a nested callback.
+      const finalPlayback = /** @type {Promise<void> | null} */ (lastPlayback);
+      if (!receivedSamples || !finalPlayback) {
         throw new Error('Kokoro returned an empty audio stream.');
       }
-      await lastPlayback;
+      // stop() clears onended handlers, so cancellation must also settle the
+      // final wait after the producer has already closed its stream.
+      await new Promise((resolve, reject) => {
+        const signal = internalController.signal;
+        const onAbort = () => {
+          signal.removeEventListener('abort', onAbort);
+          reject(abortError(signal.reason));
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+        finalPlayback.then(value => {
+          signal.removeEventListener('abort', onAbort);
+          resolve(value);
+        }, error => {
+          signal.removeEventListener('abort', onAbort);
+          reject(error);
+        });
+        if (signal.aborted) onAbort();
+      });
       return true;
     } catch (error) {
+      // Only retire sources created by this session; a replacement may already
+      // have started while cancellation of the old reader was pending.
+      for (const source of sessionSources) {
+        source.onended = null;
+        this.scheduledAudioSources.delete(source);
+        try { source.stop(); } catch {}
+        try { source.disconnect(); } catch {}
+      }
+      sessionSources.clear();
       try { await reader.cancel(error); } catch {}
       throw error;
     } finally {
@@ -673,8 +758,10 @@ export class VoicePlayer {
   play(blob, { signal, rate = 1 } = {}) {
     this.stop();
     if (signal?.aborted) return Promise.reject(abortError(signal.reason));
+    const generation = this.playbackGeneration;
     if (this.audioContext) {
       return this.playWithAudioContext(blob, { signal, rate }).catch(error => {
+        if (generation !== this.playbackGeneration) throw abortError();
         if (error?.name === 'AbortError' || signal?.aborted) throw error;
         return this.playWithHtmlAudio(blob, { signal, rate });
       });
