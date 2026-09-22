@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   enforceFunctionCoverage,
+  enforceFeatureCoverage,
   resolveCoverageMinimum,
 } from '../scripts/coverage-gate.mjs';
 import {
@@ -112,5 +113,49 @@ describe('browser coverage model', () => {
 
     expect(isTopLevelScriptFunction(topLevel, 0, 100)).toBe(true);
     expect(isTopLevelScriptFunction(anonymousCallback, 1, 100)).toBe(false);
+  });
+});
+
+describe('per-feature coverage gates', () => {
+  const baseline = { features: { Chat: { minimumFunctionPct: 80, referenceCalled: 8, referenceTotal: 10 }, Sync: { minimumFunctionPct: 90, referenceCalled: 9, referenceTotal: 10 } } };
+  const features = [{ name: 'Chat', fnCalled: 8, fnTotal: 10 }, { name: 'Sync', fnCalled: 9, fnTotal: 10 }];
+  it('passes exactly at each floor using counts, not a supplied percentage', () => {
+    expect(enforceFeatureCoverage(features.map(f => ({ ...f, fnPct: 0 })), baseline)).toHaveLength(2);
+  });
+  it('fails a feature regression even when another feature improves', () => {
+    expect(() => enforceFeatureCoverage([{ ...features[0], fnCalled: 10 }, { ...features[1], fnCalled: 8 }], baseline)).toThrow('feature: Sync');
+  });
+  it('rejects missing, duplicated and newly unbaselined feature groups', () => {
+    expect(() => enforceFeatureCoverage(features.slice(0, 1), baseline)).toThrow('Missing measured');
+    expect(() => enforceFeatureCoverage([...features, features[0]], baseline)).toThrow('Duplicate');
+    expect(() => enforceFeatureCoverage([...features, { ...features[0], name: 'New' }], baseline)).toThrow('Missing coverage baseline');
+    expect(() => enforceFeatureCoverage(features, {})).toThrow('baseline is required');
+  });
+  it.each([0, -1, NaN, 1.5])('rejects invalid denominators: %s', fnTotal => {
+    expect(() => enforceFeatureCoverage([{ ...features[0], fnTotal }], baseline)).toThrow('Invalid function counts');
+  });
+});
+
+
+describe('coverage baseline integrity', () => {
+  it.each(['9oops', '90%', '0x50', '', null, true, [], {}])('rejects malformed percentages: %j', value => {
+    expect(() => resolveCoverageMinimum({ baseline: { minimumFunctionPct: value } })).toThrow('minimumFunctionPct');
+    expect(() => resolveCoverageMinimum({ baseline: BASELINE, envValue: typeof value === 'string' && value ? value : '90oops' })).toThrow('COVERAGE_MIN');
+  });
+  const features = [{ name: 'Chat', fnTotal: 10, fnCalled: 10 }];
+  it('rejects a floor lowered below its retained measurement', () => {
+    expect(() => enforceFeatureCoverage(features, { features: { Chat: {
+      minimumFunctionPct: 9, referenceCalled: 9, referenceTotal: 10,
+    } } })).toThrow('below its rounded reference');
+  });
+  it.each([{}, { referenceCalled: 11, referenceTotal: 10 }, { referenceCalled: 0, referenceTotal: 0 }])('rejects invalid reference counts: %j', reference => {
+    expect(() => enforceFeatureCoverage(features, { features: { Chat: {
+      minimumFunctionPct: 90, ...reference,
+    } } })).toThrow('Invalid reference');
+  });
+  it('allows deliberate tightening above the retained measurement', () => {
+    expect(enforceFeatureCoverage(features, { features: { Chat: {
+      minimumFunctionPct: 95, referenceCalled: 9, referenceTotal: 10,
+    } } })).toHaveLength(1);
   });
 });

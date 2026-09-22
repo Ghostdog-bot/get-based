@@ -2,6 +2,7 @@
 // @ts-check
 
 import { createServer } from 'node:http';
+import { createCompanionRequestHandler } from '../lib/companion-http.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -139,60 +140,10 @@ const service = createAgentHostService({
   controlHandler: runtimeController.handle,
 });
 
-const server = createServer(async (incoming, outgoing) => {
-  try {
-    const abortController = new AbortController();
-    incoming.once('aborted', () => abortController.abort());
-    outgoing.once('close', () => { if (!outgoing.writableEnded) abortController.abort(); });
-    const headers = new Headers();
-    for (const [name, value] of Object.entries(incoming.headers)) {
-      if (Array.isArray(value)) headers.set(name, value.join(', '));
-      else if (typeof value === 'string') headers.set(name, value);
-    }
-    const chunks = [];
-    let receivedBytes = 0;
-    const requestLimit = String(incoming.url || '').split('?')[0] === '/v1/uploads'
-      ? maxImageRequestBytes
-      : maxRequestBytes;
-    if (incoming.method !== 'GET' && incoming.method !== 'HEAD') {
-      const declaredBytes = Number(incoming.headers['content-length'] || 0);
-      if (Number.isFinite(declaredBytes) && declaredBytes > requestLimit) {
-        outgoing.writeHead(413, { 'Content-Type': 'application/json; charset=utf-8' });
-        outgoing.end('{"error":"request_too_large"}');
-        incoming.destroy();
-        return;
-      }
-      for await (const chunk of incoming) {
-        const buffer = Buffer.from(chunk);
-        receivedBytes += buffer.byteLength;
-        if (receivedBytes > requestLimit) {
-          outgoing.writeHead(413, { 'Content-Type': 'application/json; charset=utf-8' });
-          outgoing.end('{"error":"request_too_large"}');
-          incoming.destroy();
-          return;
-        }
-        chunks.push(buffer);
-      }
-    }
-    const request = new Request(`http://${host}:${port}${incoming.url || '/'}`, {
-      method: incoming.method,
-      headers,
-      body: chunks.length ? Buffer.concat(chunks) : undefined,
-      signal: abortController.signal,
-    });
-    const response = await service.handleRequest(request);
-    outgoing.writeHead(response.status, Object.fromEntries(response.headers));
-    if (!response.body) {
-      outgoing.end();
-      return;
-    }
-    for await (const chunk of response.body) outgoing.write(chunk);
-    outgoing.end();
-  } catch {
-    if (!outgoing.headersSent) outgoing.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
-    outgoing.end('{"error":"internal_error"}');
-  }
-});
+const server = createServer(createCompanionRequestHandler({
+  handleRequest: request => service.handleRequest(request),
+  host, getPort: () => port, maxRequestBytes, maxImageRequestBytes,
+}));
 
 function listen() {
   server.listen(port, host);
@@ -225,9 +176,14 @@ server.on('error', error => {
 let shutdownPromise;
 async function shutdown() {
   if (!shutdownPromise) shutdownPromise = (async () => {
-    if (server.listening) await new Promise(resolve => server.close(() => resolve()));
-    await Promise.all(runtimeClients.map(client => client.close?.()));
-    rmSync(workspaceRoot, { recursive: true, force: true });
+    // Stop accepting connections immediately, but let clients settle active
+    // requests before waiting for those connections to finish draining.
+    const listenerClosed = server.listening
+      ? new Promise(resolve => server.close(() => resolve())) : Promise.resolve();
+    try {
+      await Promise.allSettled(runtimeClients.map(async client => { await client.close?.(); }));
+      await listenerClosed;
+    } finally { rmSync(workspaceRoot, { recursive: true, force: true }); }
   })();
   return shutdownPromise;
 }

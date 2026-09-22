@@ -23,6 +23,7 @@ import { openEMFAssessmentEditor } from './emf-runtime.js';
 import { setChatInputValue } from './chat-composer.js';
 import { restoreMessageAttachments } from './chat-images.js';
 import { applyAgentDraft, renderAgentDraftCards } from './agent-drafts.js';
+import { claimAgentDraft } from './agent-draft-claims.js';
 import { getAIOutputAttribution } from './cli-agent-brand-assets.js';
 
 const chatMessageActionDeps = {
@@ -85,32 +86,62 @@ function containChatMessageEvent(event) {
   if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
 }
 
+const pendingDraftActions = new WeakSet();
+
 async function updateAgentDraft(actionEl, apply) {
   const index = readMessageIndex(actionEl);
   const draftId = actionEl.dataset.chatMessageDraftId || '';
   const message = index == null ? null : state.chatHistory[index];
   const draft = message?.agentDrafts?.find(item => item.id === draftId);
-  if (!draft || draft.status !== 'pending') return false;
-  if (!apply) {
-    draft.status = 'discarded';
-    await saveChatHistory();
-    chatMessageActionDeps.renderChatMessages();
-    showNotification('Proposed change discarded', 'info');
-    return true;
-  }
-  draft.status = 'applying';
-  chatMessageActionDeps.renderChatMessages();
+  if (!draft || draft.status !== 'pending' || pendingDraftActions.has(draft)) return false;
+  pendingDraftActions.add(draft);
+  const profile = state.currentProfile;
+  const thread = state.currentThreadId;
+  const history = state.chatHistory;
+  const isCurrent = () => profile === state.currentProfile && thread === state.currentThreadId && history === state.chatHistory;
+  const refresh = () => { if (isCurrent()) chatMessageActionDeps.renderChatMessages(); };
+  let claimAttempted = false;
+  let mutationStarted = false;
+  let mutationCompleted = false;
   try {
+    // Save the still-pending proposal before taking an irreversible claim.
+    // The in-memory guard rejects duplicate clicks during this preparatory save.
+    // A failure or navigation here leaves no persisted in-flight status.
+    if (!apply) draft.status = 'discarded';
+    refresh();
+    if (!await saveChatHistory()) throw new Error('Could not save the proposal status. No change was applied.');
+    if (!isCurrent()) return true;
+    if (!apply) {
+      showNotification('Proposed change discarded', 'info');
+      return true;
+    }
+    draft.status = 'applying';
+    refresh();
+    claimAttempted = true;
+    await claimAgentDraft(profile, draftId);
+    if (!isCurrent()) { draft.status = 'failed'; return true; }
+    mutationStarted = true;
     const notice = await applyAgentDraft({ ...draft, status: 'pending' });
+    mutationCompleted = true;
     draft.status = 'applied';
     draft.appliedAt = new Date().toISOString();
-    await saveChatHistory();
-    chatMessageActionDeps.renderChatMessages();
-    showNotification(notice, 'success');
+    // The origin retains its durable claim if the user navigated away. Never
+    // save the captured proposal into a different active conversation.
+    if (!isCurrent()) return true;
+    if (!await saveChatHistory()) throw new Error('The change was saved, but its conversation status could not be saved. Check your data before making another proposal.');
+    if (isCurrent()) showNotification(notice, 'success');
   } catch (error) {
-    draft.status = 'pending';
-    chatMessageActionDeps.renderChatMessages();
-    showNotification(error instanceof Error ? error.message : 'The proposed change could not be applied.', 'error');
+    // Mutators can fail after a partial commit. Keep ambiguous outcomes out of
+    // the retry path; the durable applying claim provides the same protection.
+    draft.status = mutationCompleted ? 'applied' : claimAttempted ? 'failed' : 'pending';
+    if (isCurrent()) {
+      showNotification(mutationStarted
+        ? 'Check your data before trying this change again. The proposal could not be fully confirmed.'
+        : error instanceof Error ? error.message : 'The proposal status could not be saved.', 'error');
+    }
+  } finally {
+    pendingDraftActions.delete(draft);
+    refresh();
   }
   return true;
 }
@@ -339,7 +370,7 @@ export function regenerateLastMessage() {
   const { renderChatMessages, sendChatMessage } = callbacks;
 
   const lastUserMsg = state.chatHistory[state.chatHistory.length - 2];
-  if (!lastUserMsg || lastUserMsg.role !== 'user') return;
+  if (!lastUserMsg || lastUserMsg.joined || lastUserMsg.role !== 'user') return;
   if (lastUserMsg.hasImages && !restoreMessageAttachments(lastUserMsg)) {
     showNotification(
       'The original images are no longer available. Attach them again to retry this response.',
@@ -358,7 +389,7 @@ export function regenerateLastMessage() {
 
 export function copyMessage(msgIndex) {
   const msg = state.chatHistory[msgIndex];
-  if (!msg) return;
+  if (!msg || msg.joined) return;
   const btn = document.getElementById(`chat-copy-btn-${msgIndex}`);
   if (!navigator.clipboard) {
     if (btn) {

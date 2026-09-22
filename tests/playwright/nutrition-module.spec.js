@@ -9,6 +9,17 @@ const TINY_PNG = Buffer.from(
   'base64',
 );
 
+// Pin the catalogue before navigation; opening provider controls can refresh it.
+// Seeded model choices must never depend on the live provider catalogue.
+async function mockMobileNutritionCatalog(page) {
+  await page.route('https://openrouter.ai/api/v1/models**', route => route.fulfill({
+    json: { data: [
+      { id: 'openai/gpt-5.6-sol', name: 'Vision A' },
+      { id: 'anthropic/claude-opus-5', name: 'Vision B' },
+    ].map(model => ({ ...model, architecture: { input_modalities: ['text', 'image'] } })) },
+  }));
+}
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('labcharts-ai-paused', 'false');
@@ -2010,6 +2021,16 @@ test('AI Settings can route meal photos to Opus without changing the Grok chat m
 });
 
 test('the meal editor switches visual models directly and returns from AI Settings without losing the draft', async ({ page }) => {
+  // Opening AI Settings refreshes this catalog. Keep that response consistent
+  // with the seeded fixture instead of racing the live provider's model list.
+  await page.route('https://openrouter.ai/api/v1/models**', route => route.fulfill({
+    json: { data: [
+      { id: 'x-ai/grok-4.6', name: 'Grok 4.6' },
+      { id: 'google/gemini-3.7-flash', name: 'Gemini 3.7 Flash' },
+      { id: 'anthropic/claude-sonnet-5', name: 'Claude Sonnet 5' },
+      { id: 'anthropic/claude-opus-5', name: 'Claude Opus 5' },
+    ].map(model => ({ ...model, architecture: { input_modalities: ['text', 'image'] } })) },
+  }));
   await page.goto('/app', { waitUntil: 'load' });
   await page.evaluate(async () => {
     const api = await import('/js/api.js');
@@ -2080,6 +2101,7 @@ test('the meal editor switches visual models directly and returns from AI Settin
 });
 
 test('nutrition review, Debug comparison, targets, and drink logging fit a narrow mobile modal', async ({ page }) => {
+  await mockMobileNutritionCatalog(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/app', { waitUntil: 'load' });
   await page.evaluate(async () => {
@@ -2203,6 +2225,7 @@ test('nutrition review, Debug comparison, targets, and drink logging fit a narro
 });
 
 test('mobile photo analysis moves focus to the editable review', async ({ page }) => {
+  await mockMobileNutritionCatalog(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.route('https://openrouter.ai/api/v1/chat/completions', route => route.fulfill({
