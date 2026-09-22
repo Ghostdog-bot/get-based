@@ -85,7 +85,8 @@ export function appendDiscussionOutputAttribution({
 }) {
   if (!isRoundThreadActive(threadId)) return false;
   const attribution = getAIOutputAttribution({ provider, agentId, modelId, modelDisplay });
-  if (!attribution) return false;
+  // Live discussion output follows the same display rule as restored chat.
+  if (attribution !== 'Written with Grok') return false;
   const element = document.createElement('div');
   element.className = 'chat-provider-attribution';
   element.textContent = attribution;

@@ -549,7 +549,9 @@ export async function sendChatMessage({ prepareRetry = null, retry = null } = {}
       modelId: _msgModelId,
       modelDisplay: _msgModelDisplay,
     });
-    if (attribution) {
+    // Match restored transcripts: retain Grok branding, not a generic label on
+    // every reply. First-use AI disclosure and standalone exports are separate.
+    if (attribution === 'Written with Grok') {
       const attributionEl = document.createElement('div');
       attributionEl.className = 'chat-provider-attribution';
       attributionEl.textContent = attribution;

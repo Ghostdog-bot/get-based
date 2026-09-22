@@ -148,7 +148,10 @@ export function renderChatMessages({ preserveScroll = false } = {}) {
         html += `<div class="chat-cost-footnote">${escapeHTML(mName)} \u00b7 ${escapeHTML(formatCost(cost))} \u00b7 ${totalTokens.toLocaleString()} tokens${webTag}${e2eeTag}</div>`;
       }
       const attribution = getAIOutputAttribution(msg);
-      if (attribution) html += `<div class="chat-provider-attribution">${escapeHTML(attribution)}</div>`;
+      // The chat already identifies the AI interaction. Keep existing Grok
+      // branding without repeating a generic label beneath every reply.
+      // Copy/export paths retain standalone output attribution separately.
+      if (attribution === 'Written with Grok') html += `<div class="chat-provider-attribution">${escapeHTML(attribution)}</div>`;
       html += buildActionBar(i);
       // Lens citations — show which excerpts the AI received with this question.
       // Persisted on the message so re-rendering or switching threads keeps
