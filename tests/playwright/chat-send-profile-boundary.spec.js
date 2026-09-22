@@ -64,6 +64,7 @@ for (const change of ['profile', 'thread', 'none']) {
     if (change === 'none') {
       expect(result.history.at(-1).content).toBe('Synthetic private A response.');
       expect(result.transcript).toContain('Synthetic private A response.');
+      await expect(page.locator('#chat-messages .chat-provider-attribution')).toHaveCount(0);
     } else {
       expect(result.history).toEqual([{ role: 'user', content: 'Keep B unchanged' }]);
       expect(result.transcript).not.toContain('private A');

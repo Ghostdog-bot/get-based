@@ -49,6 +49,18 @@ test('chat render browser coverage handles lens sources and rich transcript UI',
         && sourceHost.querySelectorAll('.chat-lens-source').length === 2;
       outcomes.lensSourcesEmptyInputReturnsBlank = chatRender._renderLensSources([], '') === '';
 
+      const { appendDiscussionOutputAttribution } = await import('/js/chat-discussion-round-view.js');
+      const liveDiscussion = document.createElement('div');
+      const genericAdded = appendDiscussionOutputAttribution({
+        threadId: null, aiMsgEl: liveDiscussion, provider: 'openrouter', modelId: 'example/model',
+      });
+      const grokAdded = appendDiscussionOutputAttribution({
+        threadId: null, aiMsgEl: liveDiscussion, provider: 'openrouter', modelId: 'x-ai/grok-4',
+      });
+      outcomes.liveDiscussionMatchesTranscriptAttribution = !genericAdded && grokAdded
+        && liveDiscussion.querySelectorAll('.chat-provider-attribution').length === 1
+        && liveDiscussion.textContent === 'Written with Grok';
+
       const attentionWrapper = document.createElement('details');
       attentionWrapper.className = 'rec-chat-wrapper rec-chat-unseen';
       attentionWrapper.style.cssText = 'position:fixed;top:12px;left:12px;z-index:9999';
