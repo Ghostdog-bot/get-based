@@ -176,7 +176,7 @@ test('chat render browser coverage handles lens sources and rich transcript UI',
         && costFootnote.includes('encrypted');
       const outputLabels = [...rendered.querySelectorAll('.chat-provider-attribution')].map(el => el.textContent);
       outcomes.grokOutputIsVisiblyAttributed = outputLabels.includes('Written with Grok');
-      outcomes.otherAIOutputIsVisiblyAttributed = outputLabels.includes('AI-generated')
+      outcomes.otherAIOutputDoesNotRepeatGenericLabel = !outputLabels.includes('AI-generated')
         && !rendered.querySelector('.chat-user .chat-provider-attribution');
       outcomes.assistantExtrasRender = rendered.textContent.includes('[stopped]')
         && rendered.textContent.includes('[output limit reached - ask "continue" to finish]')
@@ -226,10 +226,10 @@ test('chat render browser coverage handles lens sources and rich transcript UI',
         { role: 'assistant', content: 'Limited answer', agentId: 'grok', truncated: true },
       ];
       chatRender.renderChatMessages();
-      outcomes.errorRecordsHaveNoAttributionButPartialOutputKeepsLabels =
+      outcomes.errorAndGenericPartialRecordsHaveNoRepeatedLabelButGrokKeepsBranding =
         !rendered.querySelector('#chat-msg-0 .chat-provider-attribution')
         && !rendered.querySelector('#chat-msg-1 .chat-provider-attribution')
-        && rendered.querySelector('#chat-msg-2 .chat-provider-attribution')?.textContent === 'AI-generated'
+        && !rendered.querySelector('#chat-msg-2 .chat-provider-attribution')
         && rendered.querySelector('#chat-msg-3 .chat-provider-attribution')?.textContent === 'Written with Grok';
       state.chatHistory = Array.from({ length: 260 }, (_, index) => ({
         role: index % 2 ? 'assistant' : 'user',
