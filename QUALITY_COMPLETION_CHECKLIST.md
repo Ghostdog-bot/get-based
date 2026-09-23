@@ -1,3 +1,83 @@
+## PWA CI readiness correction
+
+At head602d567e, the Chromium two-tab update test reached build-b but exceeded
+its five-second app-ready assertion for the second tab. The failure trace did
+not report a startup exception; the original focused scenario passed locally.
+The test now gives async profile hydration the same bounded30-second lifecycle
+budget as activation and checks restored lab entries in both tabs. This changes
+only test synchronization and assertions, not production startup or coverage floors.
+
+# PR1650 review correction — generic CSV ownership
+
+Greptile identified an additional generic text-file entry path that captured the
+profile only after file.text(). Two real-browser regressions reproduced both
+profile switching and same-profile data replacement. handleTextFile now captures
+both identities before reading and rejects stale completion before either cycle
+preview or lab parsing. Both new cases, the existing text/CSV/spreadsheet/image
+runtime scenario, CheckJS and original production budgets pass (5254.9 KiB).
+The combined batch now adds 54 cases. Final-head CI and review are still required.
+
+# Final local cycle-batch verification
+
+The combined batch has 52 new regression cases. All 77 cycle unit cases (52 new,
+25 existing) pass across four suites, plus the configuration guard, 78 existing
+cycle checks and two relevant Chromium workflows. Final CheckJS, strict-null,
+17 quality guards, architecture and original production budgets pass.
+Production total: 5254.8 KiB. Scoped mutation coverage from the three relevant
+suites is 97.72% lines, 95.45% functions, 84.51% branches and 92.48% statements,
+above the independent 97/95/83/92 floors. No full local matrix was run.
+These are behavioral additions and ownership fixes, not collector corrections.
+PR1649 merged as 0425cb4e after head193c1218 passed CI35843836228 (757 browser
+scenarios, nine skipped), all 17 feature gates, 31 critical floors and Greptile5/5.
+Clean artifact merge b028c91e has parents1bda34a8/193c1218; function execution
+coverage is 14577/16157 (90.22096%), up from14553/16158 (90.06684%).
+The local batch was rebased onto that identical squash tree; range-diff confirms
+all three local patches are unchanged. This batch's own exact-head CI coverage
+and Greptile review remain pending before authorized merging.
+
+# Cycle preview ownership extension — same local batch
+
+The batch now contains 52 new cases: the 35 mutation/storage cases below plus
+17 preview/file/confirmation cases. Eight initial UI regressions reproduced
+wrong-profile confirmation/deletion, duplicate writes, late stylesheet preview,
+and late history navigation. Preview identity and data ownership now survive
+consent, file reads, stylesheet loading and commit; replaced previews resolve,
+failed/declined confirmations remain retryable, and delayed history reopening
+checks ownership. These tests exercise the actual UI handlers with deterministic
+persistence/runtime doubles. Two real browser import scenarios also pass again.
+CheckJS and strict-null gates are rerun for the UI extension. Critical allowlist
+is now 58 suites, 32 modules; production remains below unchanged limits at
+5254.8 KiB (before the final stale-preview settlement adjustment).
+This is one local batch; no additional CI was triggered.
+
+# Cycle import recovery batch — local, pending predecessor acceptance
+
+Branch `codex/cycle-import-recovery`, based on PR1649 head193c1218.
+Adds 35 regressions (32 mutation-boundary cases and three real IndexedDB store
+rollback cases). Four initial regressions reproduced cross-profile import/delete
+mutation, failed-save rollback into replacement data, and swallowed snapshot-read
+failure. Mutation operations now serialize, reject stale owner/data before
+mutation, restore only their original data, and scope durable rollback to the
+origin profile with a mutation baseline. Read errors fail closed. Rollback of a
+reused import restores all of its previous rows, including dates outside the new
+input, preserving unrelated import batches.
+
+Persistence logic is extracted into `cycle-import-mutations.js` while preserving
+the public facade. The service-worker list and module graph include it. A new
+independent gate sets 97% lines, 95% functions, 83% branches and 92% statements;
+selected measurement was 97.72/95.45/83.22/92.01 before the final fail-closed count
+read simplification. There are now 57 explicit critical suites and 32 modules.
+
+Verification: 35 new cases and 25 existing cycle cases pass, as does the critical
+config guard. Two real browser workflows (Drip import/commit/history, profile-sex
+consent) pass; 78 existing cycle checks, CheckJS, strict-null zero diagnostics,
+17 quality guards, architecture and original production limits pass. Production
+output is 5253.8 KiB. No exhaustive local suite, hardware/model or real-provider
+work was performed. This batch is local and must be rebased after PR1649 merges,
+then receive its own exact-head CI, artifact and review acceptance.
+
+---
+
 # PR1649 chat fixture timing correction
 
 Head fe7ebb93 passed Greptile 5/5 and preliminary gates, including the corrected

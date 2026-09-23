@@ -1,3 +1,19 @@
+# Current batch status
+
+PR1649 is merged and accepted against exact head193c1218. The cycle recovery
+batch now has 52 new cases (including 17 preview/file/consent cases) and is based
+on squash0425cb4e. Local checks pass; complete new-head CI and review remain
+pending. Historical investigation notes follow.
+
+# Additional concrete gap found during completion audit
+
+Cycle import/delete failure recovery was not proven by existing success-path
+coverage. The next local batch adds 35 cases and fixes four reproduced ownership
+and rollback failures, with real IndexedDB restoration checks. See the completion
+checklist for focused evidence. PR1649 acceptance remains independent; do not
+mark the overall goal complete before this recovery batch is accepted and the
+remaining-surface audit is finished.
+
 # Active autonomous remaining-surface batch — 2026-09-23
 
 PR #1648 merged as `1bda34a8002d9c9099354b0d7a221c7a5600ec1b` after exact-head

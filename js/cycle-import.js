@@ -3,20 +3,15 @@
 
 import { getErrorMessage } from './caught-error.js';
 import { state } from './state.js';
-import { saveImportedData } from './data.js';
-import { restoreImportedArray } from './data-merge.js';
-import { getActiveProfileId, setProfileSex } from './profile.js';
+import { buildCycleImportPlan, commitCycleImport, deleteCycleImportFromProfile, deleteCycleSourceFromProfile } from './cycle-import-mutations.js';
+export { buildCycleImportPlan, commitCycleImport, deleteCycleImportFromProfile, deleteCycleSourceFromProfile, clearCycleProfileData } from './cycle-import-mutations.js';
 import { closeModalOverlay, openModalOverlay } from './modal-lifecycle.js';
 import { endTour } from './tour.js';
 import { escapeAttr, escapeHTML, showConfirmDialog, showNotification } from './utils.js';
-import { recordContextCardChangeRuntime } from './context-cards-runtime.js';
 import {
   loadCycleImportStylesheetRuntime, navigateCycleViewRuntime, openCycleEditorRuntime,
-  renderCycleProfileButtonRuntime,
 } from './cycle-runtime.js';
 import {
-  buildCycleCoverage,
-  normalizeCyclePeriods,
   stitchCyclePeriodsFromObservations,
   upgradeMenstrualCycleProfile,
 } from './cycle-summary.js';
@@ -35,18 +30,7 @@ import {
   cycleFileKind,
   naturalCyclesArchiveEntries,
 } from './cycle-import-file.js';
-import {
-  clearCycleImport,
-  clearCycleDB,
-  clearCycleSource,
-  getAllCycleObservationsRaw,
-  getCycleImportMeta,
-  getCycleImportMetaRaw,
-  saveCycleImportMeta,
-  upsertCycleObservationBatch,
-  upsertCycleImportMetaBatchRaw,
-  upsertCycleObservationBatchRaw,
-} from './cycle-store.js';
+
 
 const CYCLE_IMPORT_ACTION = 'data-cycle-import-action';
 const CYCLE_IMPORT_ACCEPT = '.csv,.json,.cluedata,.xml,.zip,text/csv,application/json,application/xml,text/xml,application/zip';
@@ -67,18 +51,22 @@ const SOURCE_LABELS = {
  * @typedef {{
  *   parsed: Record<string, any>,
  *   conflictMode: string,
+ *   isCurrent: () => boolean,
+ *   committing: boolean,
  *   resolve: (value: any) => void,
  * }} PendingCycleImport
  */
 /** @type {PendingCycleImport | null} */
 let pendingCycleImport = null;
+let previewGeneration = 0;
+function cycleViewOwner() {
+  const profileId = state.currentProfile;
+  const data = state.importedData;
+  return () => state.currentProfile === profileId && state.importedData === data;
+}
 
 function navigateCycleImportView(category) {
   return navigateCycleViewRuntime(category);
-}
-
-function renderCycleProfileButton() {
-  renderCycleProfileButtonRuntime();
 }
 
 async function openCycleEditorFromImport() {
@@ -97,39 +85,6 @@ function importActionAttrs(action, data = {}) {
 function sourceLabel(source) {
   return SOURCE_LABELS[source] || source;
 }
-function cloneJSON(value) {
-  return value == null ? value : JSON.parse(JSON.stringify(value));
-}
-
-function snapshotCycleState() {
-  return {
-    menstrualCycle: cloneJSON(state.importedData.menstrualCycle),
-    changeHistory: cloneJSON(state.importedData.changeHistory || []),
-    deleted: cloneJSON(state.importedData._deleted || {}),
-    profileSex: state.profileSex,
-  };
-}
-async function restoreCycleState(snapshot, profileId, { restoreSex = false } = {}) {
-  state.importedData.menstrualCycle = snapshot.menstrualCycle;
-  restoreImportedArray(state.importedData, 'changeHistory', snapshot.changeHistory);
-  state.importedData._deleted = snapshot.deleted;
-  if (restoreSex && state.profileSex !== snapshot.profileSex) {
-    if (!await setProfileSex(profileId, snapshot.profileSex || null)) {
-      throw new Error('The profile no longer exists, so its previous sex could not be restored.');
-    }
-    state.profileSex = snapshot.profileSex;
-    renderCycleProfileButton();
-  }
-}
-async function persistCycleState() {
-  if (!await saveImportedData()) throw new Error('Cycle data could not be saved. No changes were kept.');
-}
-
-async function restorePersistedCycleState(snapshot, profileId, options = {}) {
-  await restoreCycleState(snapshot, profileId, options);
-  if (!await saveImportedData()) throw new Error('The previous cycle state could not be restored. Reload before making more changes.');
-}
-
 export function renderCycleImportPickerControls() {
   return `<button type="button" class="cycle-icon-btn" ${importActionAttrs('pick-file')} title="Import cycle data" aria-label="Import cycle data"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m17 8-5-5-5 5"></path><path d="M12 3v12"></path></svg></button>
     <input type="file" class="cycle-import-file-input" ${importActionAttrs('select-file')} accept="${CYCLE_IMPORT_ACCEPT}" hidden aria-label="Choose a cycle export">`;
@@ -349,216 +304,6 @@ async function parseCycleImportContext(context) {
 
 export { parseClueCycleJson, parseDripCycleCsv, parseNaturalCyclesCsv, parseNaturalCyclesCsvBundle } from './cycle-import-adapters.js';
 
-function overlaps(a, b) {
-  return a.startDate <= (b.endDate || b.startDate) && (a.endDate || a.startDate) >= b.startDate;
-}
-export function buildCycleImportPlan(parsed, mc = state.importedData.menstrualCycle, conflictMode = 'keep-existing') {
-  const imported = normalizeCyclePeriods(parsed?.periods || []);
-  const existing = normalizeCyclePeriods(mc?.periods || []);
-  const conflicts = imported.map(period => ({
-    period,
-    existing: existing.filter(curr => overlaps(period, curr)),
-  })).filter(item => item.existing.length > 0);
-  const conflictStarts = new Set(conflicts.map(item => item.period.startDate));
-  const importedToApply = imported.filter(period => conflictMode === 'replace-overlapping' || !conflictStarts.has(period.startDate));
-  const existingToKeep = conflictMode === 'replace-overlapping'
-    ? existing.filter(curr => !importedToApply.some(period => overlaps(period, curr)))
-    : existing;
-  return {
-    conflictMode,
-    conflicts,
-    importedPeriods: imported,
-    importedToApply,
-    mergedPeriods: normalizeCyclePeriods([...existingToKeep, ...importedToApply]),
-  };
-}
-
-async function applyRawObservationCounts(mc, profileId, sourceHint = null, rawRowsOverride = null) {
-  const upgraded = upgradeMenstrualCycleProfile(mc);
-  if (!upgraded?.coverage) return upgraded;
-  let rawRows;
-  if (rawRowsOverride) rawRows = rawRowsOverride;
-  else try { rawRows = await getAllCycleObservationsRaw(profileId); } catch { return upgraded; }
-  const rawBySource = new Map();
-  for (const row of rawRows) {
-    if (!row?.source || !row?.date) continue;
-    const stats = rawBySource.get(row.source) || { count: 0, firstDate: row.date, lastDate: row.date };
-    stats.count++;
-    if (row.date < stats.firstDate) stats.firstDate = row.date;
-    if (row.date > stats.lastDate) stats.lastDate = row.date;
-    rawBySource.set(row.source, stats);
-  }
-  const sources = new Set([...Object.keys(upgraded.coverage.sources || {}), ...rawBySource.keys()]);
-  if (sourceHint) sources.add(sourceHint);
-  for (const source of sources) {
-    const raw = rawBySource.get(source);
-    const count = raw?.count || 0;
-    const periods = upgraded.coverage.sources[source]?.periods || 0;
-    if (count > 0 || periods > 0) {
-      upgraded.coverage.sources[source] = {
-        ...(upgraded.coverage.sources[source] || { importedAt: null, periods: 0 }),
-        observations: count,
-        ...(raw ? { firstDate: raw.firstDate, lastDate: raw.lastDate } : {}),
-      };
-    } else {
-      delete upgraded.coverage.sources[source];
-    }
-  }
-  const coverageDates = [
-    ...upgraded.periods.flatMap(period => [period.startDate, period.endDate]),
-    ...rawRows.map(row => row.date),
-  ].filter(Boolean).sort();
-  upgraded.coverage.firstDate = coverageDates[0] || null;
-  upgraded.coverage.lastDate = coverageDates[coverageDates.length - 1] || null;
-  upgraded.coverage.observationCount = rawRows.length;
-  return upgraded;
-}
-
-export async function commitCycleImport(parsed, { conflictMode = 'keep-existing', allowProfileSexChange = false } = {}) {
-  if (!parsed || !parsed.source || !parsed.importId) throw new Error('Invalid cycle import');
-  const profileId = getActiveProfileId();
-  if (state.profileSex && state.profileSex !== 'female' && !allowProfileSexChange) {
-    const error = /** @type {Error & { code?: string }} */ (new Error('Confirm changing this profile to female before importing cycle data.'));
-    error.code = 'profile-sex-confirmation-required';
-    throw error;
-  }
-  const snapshot = snapshotCycleState();
-  const now = new Date().toISOString();
-  const observations = (parsed.observations || []).map(row => ({ importedAt: Date.now(), ...row, source: parsed.source, importId: parsed.importId }));
-  const observationDates = new Set(observations.map(row => row.date));
-  const priorRows = (await getAllCycleObservationsRaw(profileId).catch(() => []))
-    .filter(row => row.source === parsed.source && observationDates.has(row.date));
-  const priorMeta = await getCycleImportMetaRaw(profileId, parsed.importId).catch(() => null);
-  try {
-    if (observations.length > 0) await upsertCycleObservationBatch(profileId, observations);
-    await saveCycleImportMeta(profileId, {
-      importId: parsed.importId,
-      source: parsed.source,
-      sourceFile: parsed.sourceFile || '',
-      importedAt: now,
-      observationCount: observations.length,
-      periodCount: parsed.periods?.length || 0,
-      detectedRange: parsed.detectedRange || null,
-    });
-    if (state.profileSex !== 'female') {
-      if (!await setProfileSex(profileId, 'female')) {
-        throw new Error('The active profile no longer exists.');
-      }
-      state.profileSex = 'female';
-      renderCycleProfileButton();
-    }
-    const plan = buildCycleImportPlan(parsed, state.importedData.menstrualCycle, conflictMode);
-    const coverage = buildCycleCoverage(plan.mergedPeriods, state.importedData.menstrualCycle?.coverage || null);
-    const previousImportIds = coverage.sources[parsed.source]?.importIds || [];
-    coverage.sources[parsed.source] = {
-      ...(coverage.sources[parsed.source] || { periods: 0, observations: 0 }),
-      importedAt: now,
-      importIds: Array.from(new Set([...previousImportIds, parsed.importId])),
-    };
-    const base = { ...(state.importedData.menstrualCycle || {}), periods: plan.mergedPeriods, coverage };
-    state.importedData.menstrualCycle = await applyRawObservationCounts(base, profileId, parsed.source);
-    recordContextCardChangeRuntime('menstrualCycle');
-    await persistCycleState();
-    return {
-      observations: observations.length,
-      periods: plan.importedToApply.length,
-      conflicts: plan.conflicts.length,
-      source: parsed.source,
-    };
-  } catch (error) {
-    try {
-      await clearCycleImport(profileId, parsed.importId);
-      await upsertCycleObservationBatchRaw(profileId, priorRows);
-      if (priorMeta) await upsertCycleImportMetaBatchRaw(profileId, [priorMeta]);
-    } catch (rollbackError) {
-      error = new Error(
-        `${getErrorMessage(error, 'Cycle import failed')} Rollback also failed: ${getErrorMessage(rollbackError)}`,
-        { cause: error },
-      );
-    }
-    await restoreCycleState(snapshot, profileId, { restoreSex: true });
-    throw error;
-  }
-}
-
-export async function deleteCycleImportFromProfile(importId) {
-  if (!importId) return false;
-  const profileId = getActiveProfileId();
-  const mc = state.importedData.menstrualCycle;
-  const rawRows = await getAllCycleObservationsRaw(profileId).catch(() => []);
-  const rawMeta = await getCycleImportMetaRaw(profileId, importId).catch(() => null);
-  const meta = await getCycleImportMeta(profileId, importId).catch(() => null);
-  const removed = (mc?.periods || []).filter(period => period.importId === importId);
-  if (!rawMeta && !meta && removed.length === 0 && !rawRows.some(row => row.importId === importId)) return false;
-  if (!mc) { await clearCycleImport(profileId, importId); return true; }
-  const snapshot = snapshotCycleState();
-  const source = removed[0]?.source || meta?.source || rawMeta?.source || null;
-  const sources = { ...(mc.coverage?.sources || {}) };
-  if (source && sources[source]) {
-    sources[source] = { ...sources[source], importIds: (sources[source].importIds || []).filter(id => id !== importId) };
-  }
-  const next = {
-    ...mc,
-    periods: (mc.periods || []).filter(period => period.importId !== importId),
-    ...(mc.coverage ? { coverage: { ...mc.coverage, sources } } : {}),
-  };
-  const remainingRows = rawRows.filter(row => row.importId !== importId);
-  state.importedData.menstrualCycle = await applyRawObservationCounts(next, profileId, source, remainingRows);
-  recordContextCardChangeRuntime('menstrualCycle');
-  let persisted = false;
-  try {
-    await persistCycleState();
-    persisted = true;
-    await clearCycleImport(profileId, importId);
-  } catch (error) {
-    if (persisted) await restorePersistedCycleState(snapshot, profileId);
-    else await restoreCycleState(snapshot, profileId);
-    throw error;
-  }
-  return true;
-}
-
-export async function deleteCycleSourceFromProfile(source) {
-  if (!source) return false;
-  const profileId = getActiveProfileId();
-  const mc = state.importedData.menstrualCycle;
-  if (!mc) { await clearCycleSource(profileId, source); return true; }
-  const snapshot = snapshotCycleState();
-  const rawRows = await getAllCycleObservationsRaw(profileId).catch(() => []);
-  const next = { ...mc, periods: (mc.periods || []).filter(period => period.source !== source) };
-  state.importedData.menstrualCycle = await applyRawObservationCounts(next, profileId, source, rawRows.filter(row => row.source !== source));
-  recordContextCardChangeRuntime('menstrualCycle');
-  let persisted = false;
-  try {
-    await persistCycleState();
-    persisted = true;
-    await clearCycleSource(profileId, source);
-  } catch (error) {
-    if (persisted) await restorePersistedCycleState(snapshot, profileId);
-    else await restoreCycleState(snapshot, profileId);
-    throw error;
-  }
-  return true;
-}
-
-export async function clearCycleProfileData() {
-  const profileId = getActiveProfileId();
-  const snapshot = snapshotCycleState();
-  state.importedData.menstrualCycle = null;
-  recordContextCardChangeRuntime('menstrualCycle');
-  let persisted = false;
-  try {
-    await persistCycleState();
-    persisted = true;
-    await clearCycleDB(profileId);
-  } catch (error) {
-    if (persisted) await restorePersistedCycleState(snapshot, profileId);
-    else await restoreCycleState(snapshot, profileId);
-    throw error;
-  }
-  return true;
-}
-
 function conflictSummary(plan) {
   const count = plan.conflicts.length;
   return `${count} imported period${count !== 1 ? 's' : ''} overlap${count === 1 ? 's' : ''} existing entries.`;
@@ -630,6 +375,10 @@ export async function showCycleImportPreview(parsed) {
     showNotification('No cycle data found in this file', 'info');
     return null;
   }
+  const isCurrent = cycleViewOwner();
+  const generation = ++previewGeneration;
+  pendingCycleImport?.resolve(null);
+  pendingCycleImport = null;
   try {
     await loadCycleImportStylesheetRuntime();
   } catch (err) {
@@ -637,9 +386,10 @@ export async function showCycleImportPreview(parsed) {
     showNotification('Could not load import review. Reload the app to finish updating, then try again.', 'error');
     return null;
   }
+  if (!isCurrent() || generation !== previewGeneration) return null;
   return new Promise(resolve => {
     endTour({ openEmptyChat: false });
-    pendingCycleImport = { parsed, conflictMode: 'keep-existing', resolve };
+    pendingCycleImport = { parsed, conflictMode: 'keep-existing', resolve, isCurrent, committing: false };
     const overlay = document.getElementById('import-modal-overlay');
     const modal = document.getElementById('import-modal');
     if (!overlay || !modal) {
@@ -657,6 +407,7 @@ export async function showCycleImportPreview(parsed) {
 
 /** @param {any} [value] */
 function closeCycleImportPreview(value = null) {
+  previewGeneration++;
   const pending = pendingCycleImport;
   pendingCycleImport = null;
   closeModalOverlay('import-modal-overlay');
@@ -686,55 +437,72 @@ export async function handleCycleImportAction(event) {
     const modal = document.getElementById('import-modal');
     if (modal) modal.innerHTML = renderCycleImportPreview(pendingCycleImport.parsed, pendingCycleImport.conflictMode);
   } else if (action === 'confirm' && pendingCycleImport) {
-    let allowProfileSexChange = false;
-    if (state.profileSex && state.profileSex !== 'female') {
-      const sexLabel = state.profileSex.charAt(0).toUpperCase() + state.profileSex.slice(1);
-      allowProfileSexChange = await showConfirmDialog(`This profile is set to ${sexLabel}. Cycle interpretation uses female reference ranges. Change the profile to Female and continue?`);
-      if (!allowProfileSexChange) return;
-    }
+    const pending = pendingCycleImport;
+    if (pending.committing || !pending.isCurrent()) return;
+    pending.committing = true;
     target.setAttribute('disabled', 'true');
     try {
-      const result = await commitCycleImport(pendingCycleImport.parsed, {
-        conflictMode: pendingCycleImport.conflictMode,
-        allowProfileSexChange,
+      let allowProfileSexChange = false;
+      if (state.profileSex && state.profileSex !== 'female') {
+        const sexLabel = state.profileSex.charAt(0).toUpperCase() + state.profileSex.slice(1);
+        allowProfileSexChange = await showConfirmDialog(`This profile is set to ${sexLabel}. Cycle interpretation uses female reference ranges. Change the profile to Female and continue?`);
+        if (!allowProfileSexChange) return;
+      }
+      if (pendingCycleImport !== pending || !pending.isCurrent()) return;
+      const result = await commitCycleImport(pending.parsed, {
+        conflictMode: pending.conflictMode, allowProfileSexChange,
       });
+      if (pendingCycleImport !== pending) return;
+      if (!pending.isCurrent()) { pendingCycleImport = null; pending.resolve(result); return; }
       showNotification(`Cycle import complete - ${result.periods} periods, ${result.observations} local observations`, 'success', 1200);
       closeCycleImportPreview(result);
       const didNavigate = navigateCycleImportView('body');
       setTimeout(() => {
-        openCycleEditorFromImport().catch(error => showNotification(`Could not reopen cycle history: ${error.message}`, 'error'));
+        if (pending.isCurrent()) openCycleEditorFromImport().catch(error => showNotification(`Could not reopen cycle history: ${error.message}`, 'error'));
       }, didNavigate ? 1550 : 0);
     } catch (err) {
+      if (pendingCycleImport === pending && pending.isCurrent()) showNotification(`Cycle import failed: ${getErrorMessage(err)}`, 'error');
+    } finally {
+      pending.committing = false;
       target.removeAttribute('disabled');
-      showNotification(`Cycle import failed: ${getErrorMessage(err)}`, 'error');
     }
   } else if (action === 'delete-source') {
+    const isCurrent = cycleViewOwner();
     const source = target.dataset.cycleImportSource || '';
     if (!source || !await showConfirmDialog(`Remove all ${sourceLabel(source)} cycle data from this profile?`)) return;
+    if (!isCurrent()) return;
     await deleteCycleSourceFromProfile(source);
+    if (!isCurrent()) return;
     showNotification(`${sourceLabel(source)} cycle data removed`, 'info');
     await openCycleEditorFromImport();
   } else if (action === 'delete-import') {
+    const isCurrent = cycleViewOwner();
     const importId = target.dataset.cycleImportImportId || '';
     if (!importId || !await showConfirmDialog('Remove this imported cycle batch?')) return;
+    if (!isCurrent()) return;
     await deleteCycleImportFromProfile(importId);
+    if (!isCurrent()) return;
     showNotification('Imported cycle batch removed', 'info');
     await openCycleEditorFromImport();
   }
 }
 
 export async function handleCycleImportFile(file) {
+  const isCurrent = cycleViewOwner();
   let parsed = null;
   let importLabel = 'Cycle';
   try {
     const context = await buildCycleFileContext(file);
+    if (!isCurrent()) return false;
     const appleHealthEntry = context.kind === 'zip' ? appleHealthArchiveEntry(context) : null;
     if (context.kind === 'xml' || appleHealthEntry) {
       importLabel = 'Apple Health';
       const xmlBlob = context.kind === 'xml' ? context.file : await appleHealthEntry.async('blob');
       const { importAppleHealthFile } = await import('./wearables-apple-health.js');
+      if (!isCurrent()) return false;
       showNotification('Importing Apple Health data...', 'info', 1600);
       const result = await importAppleHealthFile(file, null, { xmlBlob });
+      if (!isCurrent()) return true;
       const cycleSuffix = result.cycleImport ? ` + ${result.cycleImport.periods} cycle periods` : '';
       showNotification(`Apple Health imported - ${result.rows} days${cycleSuffix}`, 'success', 3000);
       if (result.cycleError) showNotification(`Cycle import skipped: ${result.cycleError}`, 'info', 5000);
@@ -746,6 +514,7 @@ export async function handleCycleImportFile(file) {
     showNotification(`${importLabel} import failed: ${getErrorMessage(err)}`, 'error');
     return false;
   }
+  if (!isCurrent()) return false;
   if (!parsed) {
     showNotification('No cycle data found in this file', 'info');
     return false;
