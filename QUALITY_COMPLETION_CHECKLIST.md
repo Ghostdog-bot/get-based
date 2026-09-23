@@ -1,3 +1,37 @@
+## Picker overlap review correction
+
+Greptile identified same-profile overlapping picker invocations. Four new cases
+reproduced stale dispatch during lazy load, classification, DNA header reads and
+between files. A selection generation now supersedes older invocations at each
+of those boundaries while retaining intentional JSON data replacement behavior.
+All32 relevant unit cases and CheckJS pass; production budget remains5255.8KiB.
+The batch now adds27 regressions; final-head CI/review remain pending.
+
+## Accepted predecessor and publication boundary
+
+PR #1650 merged as b115f47e after exact head fb1d8e55 passed CI35849078628
+and Greptile5/5 with its finding resolved. The clean artifact7532d4b8 has parents
+0425cb4e/fb1d8e55. All17 feature gates and32 critical floors pass; global function
+execution is14596/16165 (90.29384%), previously14577/16157 (90.22096%).
+This import-entry batch is rebased onto that squash and adds23 behavioral
+regressions. Its own CI artifact and full review remain required before merging.
+
+## Import entry ownership batch — local verification
+
+The picker and both drop-zone entry paths now retain the originating profile
+and data identity while loading and classifying files. They stop dispatch after
+a profile change, and DNA header reads also reject replacement data. The picker
+captures its FileList immediately and clears only its own selection, so an older
+completion cannot erase a newer selection. Intentional same-profile JSON imports
+can still replace data and continue through the selected batch.
+
+Verification: 20 new unit cases (28 relevant cases total) and three actual Chromium
+entry-path scenarios passed. CheckJS, zero-diagnostic strict-null, architecture
+(787 modules, zero cycles), all 17 quality guards and the unchanged production budget (5255.9 KiB total JS)
+passed. These are behavior
+regressions, not coverage-collector changes. Full CI coverage and review remain
+required before acceptance; no external providers or models were exercised.
+
 ## PWA CI readiness correction
 
 At head602d567e, the Chromium two-tab update test reached build-b but exceeded

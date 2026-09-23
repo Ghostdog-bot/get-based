@@ -1,3 +1,22 @@
+## Accepted predecessor and publication boundary
+
+PR #1650 merged as b115f47e after exact head fb1d8e55 passed CI35849078628
+and Greptile5/5 with its finding resolved. The clean artifact7532d4b8 has parents
+0425cb4e/fb1d8e55. All17 feature gates and32 critical floors pass; global function
+execution is14596/16165 (90.29384%), previously14577/16157 (90.22096%).
+This import-entry batch is rebased onto that squash and adds23 behavioral
+regressions. Its own CI artifact and full review remain required before merging.
+
+# Import entry boundary batch pending acceptance
+
+A further concrete ownership gap was reproduced before lazy import loading and
+file classification. The local batch covers picker and both drop-zone routes,
+DNA header waits, newer picker selections, profile changes between selected files,
+and intentional same-profile JSON replacement. Twenty new unit regressions and
+three Chromium entry scenarios pass. PR1650 predecessor acceptance is independent;
+this batch still needs publication, exact-head CI and complete review after the
+predecessor merges. Do not infer whole-project coverage from these local tests.
+
 # Current batch status
 
 PR1649 is merged and accepted against exact head193c1218. The cycle recovery
