@@ -6,6 +6,7 @@
 import { createServer } from 'node:http';
 import { resolve as resolvePath } from 'node:path';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_BIND_HOST = '0.0.0.0';
@@ -60,13 +61,7 @@ async function writeWebResponse(outgoing, response) {
     return;
   }
   try {
-    await new Promise((resolve, reject) => {
-      const body = Readable.fromWeb(response.body);
-      body.once('error', reject);
-      outgoing.once('error', reject);
-      outgoing.once('finish', resolve);
-      body.pipe(outgoing);
-    });
+    await pipeline(Readable.fromWeb(response.body), outgoing);
   } catch {
     if (!outgoing.destroyed) outgoing.destroy();
   }
@@ -139,10 +134,14 @@ export async function startCompatProxyServer() {
     server.listen(port, host, () => resolve(undefined));
   });
   process.stdout.write(`Compatibility relay listening on ${host}:${port}\n`);
+  let stopping = false;
   const shutdown = signal => {
+    if (stopping) return;
+    stopping = true;
     process.stdout.write(`Compatibility relay stopping after ${signal}\n`);
-    server.close(() => process.exit(0));
-    setTimeout(() => process.exit(1), 10_000).unref();
+    const forceExit = setTimeout(() => process.exit(1), 10_000);
+    forceExit.unref();
+    server.close(() => { clearTimeout(forceExit); process.exit(0); });
   };
   process.once('SIGINT', () => shutdown('SIGINT'));
   process.once('SIGTERM', () => shutdown('SIGTERM'));

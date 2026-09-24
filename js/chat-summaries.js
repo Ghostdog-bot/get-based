@@ -94,7 +94,7 @@ export async function summarizeThread() {
     const saved = _getLatestSavedSummary(thread.id);
     _showSummaryModal(thread.summary, {
       ...thread,
-      summaryAttribution: saved?.attribution === 'Written with Grok' ? saved.attribution : '',
+      summaryAttribution: saved?.attribution === 'Written with Grok' ? saved.attribution : 'AI-generated',
     });
     return;
   }
@@ -149,6 +149,7 @@ async function _generateSummary() {
 
     const costInfo = usage && !identity.subscription ? { provider: _provider, modelId: _modelId, modelDisplay: _modelDisplay, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens } : null;
     const now = new Date().toISOString();
+    /** @type {Array<[string, unknown]>} */
     const previous = ['summary', 'summaryDate', 'summaryModel', 'summaryCost'].map(key => [key, thread[key]]);
     thread.summary = text;
     thread.summaryDate = now;
@@ -255,7 +256,7 @@ export function viewSavedSummary(id) {
     name: s.threadName,
     summaryDate: s.createdAt,
     summaryModel: s.model,
-    summaryAttribution: s.attribution === 'Written with Grok' ? s.attribution : '',
+    summaryAttribution: s.attribution === 'Written with Grok' ? s.attribution : 'AI-generated',
     summaryCost: s.cost,
     summary: s.content,
     _savedId: s.id
@@ -293,7 +294,7 @@ function _showSummaryModal(summaryText, thread, loading = false, usageInfo = nul
     name: thread?.name,
     date: thread?.summaryDate,
     model: thread?.summaryModel,
-    attribution: thread?.summaryAttribution === 'Written with Grok' ? thread.summaryAttribution : '',
+    attribution: thread?.summaryAttribution === 'Written with Grok' ? thread.summaryAttribution : 'AI-generated',
   } : null;
   let overlay = document.getElementById('summary-modal-overlay');
   if (!overlay) {
@@ -339,7 +340,7 @@ function _showSummaryModal(summaryText, thread, loading = false, usageInfo = nul
     <h3>Summary</h3>
     <div class="summary-modal-meta">${threadName}${dateStr ? ' \u00b7 ' + dateStr : ''}${modelStr}${costLine}</div>
     <div id="summary-modal-body" class="summary-modal-body">${bodyContent}</div>
-    ${!loading && thread?.summaryAttribution === 'Written with Grok' ? '<div class="chat-provider-attribution">Written with Grok</div>' : ''}
+    ${!loading && _activeSummary ? `<div class="chat-provider-attribution">${escapeHTML(_activeSummary.attribution)}</div>` : ''}
     <div class="summary-modal-actions"${loading ? ' style="display:none"' : ''}>
       <button class="summary-action-btn" type="button" ${chatMessageActionAttrs('copy-summary')} title="Copy as markdown">Copy</button>
       <button class="summary-action-btn" type="button" ${chatMessageActionAttrs('download-summary')} title="Download as .md file">Download</button>

@@ -12,10 +12,10 @@ import { requestSunSessionAnalysis } from './light-sun-analysis-runtime.js';
 import { BODY_REGIONS } from './sun-body-silhouette.js';
 import {
   EXPOSURE_PRESETS,
-  POSTURE_MULTIPLIERS,
-  SURFACE_ALBEDO,
   _normalizePSMTier,
   photosensitiveMedScale,
+  sunSessionInputKey,
+  sunSessionExposure,
 } from './sun-session-model.js';
 import { createUniqueId } from './unique-id.js';
 
@@ -58,8 +58,12 @@ export function configureSunSessionsStore(deps = {}) {
   Object.assign(storeDeps, deps);
 }
 
+async function persistSessionChanges() {
+  if (await saveImportedData() === false) throw new Error('Sun session could not be saved');
+}
+
 function runSessionAnalysis(session) {
-  try { storeDeps.maybeAnalyzeSessionAfterFinish(session); } catch (_) {}
+  try { Promise.resolve(storeDeps.maybeAnalyzeSessionAfterFinish(session)).catch(() => {}); } catch (_) {}
 }
 
 export function getSessions() {
@@ -107,9 +111,9 @@ export async function startSession({ exposurePreset = 'face_hands', regions, eye
   // An empty array means "the user picked nothing" — silently substituting
   // a face_hands preset would record a phantom exposure.
   if (Array.isArray(regions)) {
-    if (regions.length === 0) throw new Error('startSession: regions array was empty — pick at least one region or pass exposurePreset instead');
+    if (regions.length === 0) throw new Error('Empty regions: pick a body region or pass exposurePreset');
     regionsArr = normalizedRegionList(regions);
-    if (regionsArr.length === 0) throw new Error('startSession: regions array contained no recognized body regions');
+    if (regionsArr.length === 0) throw new Error('No recognized body regions');
     fraction = bodyFractionForRegions(regionsArr);
     preset = { key: 'detailed' };
   } else {
@@ -137,7 +141,7 @@ export async function startSession({ exposurePreset = 'face_hands', regions, eye
     calculationStatus: 'pending',
   };
   getSessions().push(session);
-  await saveImportedData();
+  await persistSessionChanges();
   return id;
 }
 
@@ -145,6 +149,10 @@ export async function startSession({ exposurePreset = 'face_hands', regions, eye
 export async function stopSession(id) {
   const sess = getSessions().find(s => s.id === id);
   if (!sess) return null;
+  if (sess.endedAt) {
+    await persistSessionChanges();
+    return sess;
+  }
   const now = Date.now();
   if (!sess.paused) storeDeps.commitCurrentSlice(sess);
   if (sess.paused && Number.isFinite(sess.pausedAt)) {
@@ -171,7 +179,7 @@ export async function stopSession(id) {
       el.textContent = storeDeps.formatElapsed(activeMs);
     });
   }
-  await saveImportedData();
+  await persistSessionChanges();
   return sess;
 }
 
@@ -195,7 +203,7 @@ export async function logCompletedSession(payload) {
   if (!session.durationMin) session.durationMin = Math.max(0, (session.endedAt - session.startedAt) / 60000);
   session.calculationStatus = session.location ? 'pending' : 'needs-location';
   getSessions().push(session);
-  await saveImportedData();
+  await persistSessionChanges();
   return id;
 }
 
@@ -205,7 +213,7 @@ export async function deleteSession(id) {
   if (idx < 0) return false;
   deleteImportedArrayItem(state.importedData, 'sunSessions', idx);
   storeDeps.clearLiveState(id);
-  await saveImportedData();
+  await persistSessionChanges();
   return true;
 }
 
@@ -225,7 +233,7 @@ export async function pauseSession(id) {
   sess.pausedAt = Date.now();
   // Clear rate so resume forces a fresh snapshot with current atm.
   storeDeps.setLiveState(id, { ratePerMin: null });
-  await saveImportedData();
+  await persistSessionChanges();
   return sess;
 }
 
@@ -239,7 +247,7 @@ export async function resumeSession(id) {
     + Math.max(0, now - (sess.pausedAt || now));
   sess.paused = false;
   delete sess.pausedAt;
-  await saveImportedData();
+  await persistSessionChanges();
   return sess;
 }
 
@@ -265,6 +273,13 @@ function bodyFractionForRegions(regions) {
   }, 0);
 }
 
+async function persistExposureEdit(sess) {
+  markSessionEdited(sess);
+  storeDeps.setLiveState(sess.id, { ratePerMin: null });
+  await persistSessionChanges();
+  return sess;
+}
+
 export async function markSessionRotated(id) {
   const sess = getSessions().find(s => s.id === id);
   if (!sess || sess.endedAt) return null;
@@ -272,10 +287,7 @@ export async function markSessionRotated(id) {
   if (sess.bodyExposure.rotatedSides) return sess;
   storeDeps.commitCurrentSlice(sess);
   sess.bodyExposure.rotatedSides = true;
-  markSessionEdited(sess);
-  storeDeps.setLiveState(id, { ratePerMin: null });
-  await saveImportedData();
-  return sess;
+  return persistExposureEdit(sess);
 }
 
 export async function setSessionSunscreen(id, spf) {
@@ -286,10 +298,7 @@ export async function setSessionSunscreen(id, spf) {
   storeDeps.commitCurrentSlice(sess);
   if (!sess.bodyExposure) sess.bodyExposure = {};
   sess.bodyExposure.sunscreenSPF = nextSpf || null;
-  markSessionEdited(sess);
-  storeDeps.setLiveState(id, { ratePerMin: null });
-  await saveImportedData();
-  return sess;
+  return persistExposureEdit(sess);
 }
 
 export async function setSessionCoverage(id, regions) {
@@ -302,10 +311,7 @@ export async function setSessionCoverage(id, regions) {
   sess.bodyExposure.regions = nextRegions;
   sess.bodyExposure.fraction = fraction;
   sess.bodyExposure.preset = nextRegions.length === 0 ? 'covered' : 'detailed';
-  markSessionEdited(sess);
-  storeDeps.setLiveState(id, { ratePerMin: null });
-  await saveImportedData();
-  return sess;
+  return persistExposureEdit(sess);
 }
 
 // Edit fields on a saved session. Bumps `updatedAt` so the cross-device
@@ -321,6 +327,7 @@ export async function setSessionCoverage(id, regions) {
 export async function updateSession(id, patch) {
   const sess = getSessions().find(s => s.id === id);
   if (!sess) return null;
+  const isCurrent = sessionOwnership(sess);
   // Apply allowed fields. Whitelist keeps a careless caller from blowing
   // away the immutable id / startedAt or injecting fields the dose
   // engine would choke on.
@@ -340,6 +347,7 @@ export async function updateSession(id, patch) {
     sess.durationMin = Math.max(0, (sess.endedAt - sess.startedAt) / 60000);
   }
   if (durationChanged) {
+    _hydrateRequests.delete(sess);
     // A manual whole-session duration edit cannot preserve the timing of
     // previously recorded slices. Fall back to one explicitly edited span
     // instead of silently retaining segment totals for the old duration.
@@ -361,7 +369,8 @@ export async function updateSession(id, patch) {
     sess.eyeExposure.durationSec = Math.round(sess.durationMin * 60);
   }
   markSessionEdited(sess);
-  await saveImportedData();
+  await persistSessionChanges();
+  if (!isCurrent()) return null;
   // Re-hydrate doses before resolving the edit. Per-session in-flight promise serializes
   // concurrent edits — without it, two quick updateSession calls can race two
   // fetchAtmosphere awaits and write doses for the older duration after the
@@ -375,21 +384,35 @@ export async function updateSession(id, patch) {
   return sess;
 }
 
-// Per-session hydrate serialization queue. Map<sessionId, Promise>.
+// Key work by record identity, so a new profile reusing an id cannot inherit it.
 const _hydrateInFlight = new Map();
+const _hydrateRequests = new WeakMap();
+let _storeGeneration = 0;
+
+function sessionOwnership(sess) {
+  const data = state.importedData;
+  const profile = state.currentProfile;
+  const generation = _storeGeneration;
+  return () => generation === _storeGeneration
+    && state.currentProfile === profile && state.importedData === data
+    && data?.sunSessions?.includes(sess);
+}
 
 function _runHydrateSession(id, coords, { queueAfterExisting = false, warnContext = 'hydrateSession failed' } = {}) {
-  const existing = _hydrateInFlight.get(id);
+  const sess = getSessions().find(s => s.id === id);
+  if (!sess) return Promise.resolve(null);
+  const isCurrent = sessionOwnership(sess);
+  const existing = _hydrateInFlight.get(sess);
   if (existing && !queueAfterExisting) return existing;
   const base = queueAfterExisting && existing ? existing.catch(() => {}) : Promise.resolve();
   const next = base
-    .then(() => hydrateSession(id, coords))
+    .then(() => isCurrent() ? hydrateSession(id, coords) : null)
     .catch(e => {
       globalThis.console?.warn?.(warnContext, e);
       return null;
     });
-  _hydrateInFlight.set(id, next);
-  next.finally(() => { if (_hydrateInFlight.get(id) === next) _hydrateInFlight.delete(id); });
+  _hydrateInFlight.set(sess, next);
+  next.finally(() => { if (_hydrateInFlight.get(sess) === next) _hydrateInFlight.delete(sess); });
   return next;
 }
 
@@ -456,6 +479,26 @@ export function _applyAtmOverrides(atm) {
   return out;
 }
 
+function sessionSafety(sed, ocularActinicUV, fractionOfMED) {
+  const lcSkin = state.importedData?.lightCircadian?.skinType;
+  const lcRoman = lcSkin && storeDeps.skinTypeToFitzpatrick(lcSkin);
+  const configuredFitzpatrick = state.importedData?.sunDefaults?.fitzpatrick || lcRoman || null;
+  const fitzpatrick = configuredFitzpatrick || 'I';
+  const psmTier = _normalizePSMTier(state.importedData?.sunDefaults?.photosensitiveMeds);
+  const medScale = photosensitiveMedScale(psmTier);
+  return {
+    sed,
+    medFraction: fractionOfMED({ sed, fitzpatrick, medScale }),
+    ocularActinicUV,
+    retinalUV: ocularActinicUV,
+    fitzpatrick,
+    fitzpatrickAssumed: !configuredFitzpatrick,
+    photosensitiveMedTier: psmTier,
+    medicationThresholdUnknown: psmTier !== 'none',
+    photosensitive: psmTier !== 'none',
+  };
+}
+
 async function finalizeSegmentedSession(sess, fractionOfMED) {
   const segments = Array.isArray(sess.exposureSegments)
     ? sess.exposureSegments.filter(segment => segment && Number(segment.durationMin) > 0)
@@ -477,26 +520,10 @@ async function finalizeSegmentedSession(sess, fractionOfMED) {
   sess.doses = doses;
   const lastAtmosphere = [...segments].reverse().find(segment => segment.atmosphere)?.atmosphere;
   if (lastAtmosphere) sess.atmosphere = { ...lastAtmosphere };
-  const lcSkin = state.importedData?.lightCircadian?.skinType;
-  const lcRoman = lcSkin && storeDeps.skinTypeToFitzpatrick(lcSkin);
-  const configuredFitzpatrick = state.importedData?.sunDefaults?.fitzpatrick || lcRoman || null;
-  const fitzpatrick = configuredFitzpatrick || 'I';
-  const psmTier = _normalizePSMTier(state.importedData?.sunDefaults?.photosensitiveMeds);
-  const medScale = photosensitiveMedScale(psmTier);
-  sess.safety = {
-    sed,
-    medFraction: fractionOfMED({ sed, fitzpatrick, medScale }),
-    ocularActinicUV,
-    retinalUV: ocularActinicUV,
-    fitzpatrick,
-    fitzpatrickAssumed: !configuredFitzpatrick,
-    photosensitiveMedTier: psmTier,
-    medicationThresholdUnknown: psmTier !== 'none',
-    photosensitive: psmTier !== 'none',
-  };
+  sess.safety = sessionSafety(sed, ocularActinicUV, fractionOfMED);
   sess.engineVersion = SUN_ENGINE_VERSION;
   sess.calculationStatus = 'computed';
-  await saveImportedData();
+  await persistSessionChanges();
   return sess;
 }
 
@@ -505,6 +532,12 @@ export async function hydrateSession(id, coords = {}) {
   const { lat, lon } = coords;
   const sess = getSessions().find(s => s.id === id);
   if (!sess || !sess.endedAt) return null;
+  const ownsSession = sessionOwnership(sess);
+  const request = {};
+  _hydrateRequests.set(sess, request);
+  let inputKey;
+  const isCurrent = () => ownsSession() && _hydrateRequests.get(sess) === request
+    && sunSessionInputKey(sess, state.importedData) === inputKey;
   const {
     fetchAtmosphere,
     reconstructSpectrum,
@@ -514,7 +547,10 @@ export async function hydrateSession(id, coords = {}) {
     retinalUVdose,
     solarZenithAngle,
   } = storeDeps;
-  const segmented = await finalizeSegmentedSession(sess, fractionOfMED);
+  const segmentedWork = finalizeSegmentedSession(sess, fractionOfMED);
+  inputKey = sunSessionInputKey(sess, state.importedData);
+  const segmented = await segmentedWork;
+  if (!isCurrent()) return null;
   if (segmented) {
     runSessionAnalysis(segmented);
     return segmented;
@@ -526,7 +562,7 @@ export async function hydrateSession(id, coords = {}) {
     sess.safety = null;
     sess.atmosphere = null;
     sess.calculationStatus = 'needs-location';
-    await saveImportedData();
+    await persistSessionChanges();
     return null;
   }
   // A hydrate call means the existing derived snapshot is no longer trusted.
@@ -536,15 +572,17 @@ export async function hydrateSession(id, coords = {}) {
   sess.safety = null;
   sess.atmosphere = null;
   sess.calculationStatus = 'pending';
-  await saveImportedData();
-  const midpoint = new Date((sess.startedAt + sess.endedAt) / 2).toISOString();
+  await persistSessionChanges();
+  if (!isCurrent()) return null;
   const altitudeM = sess.location?.altitudeM ?? 0;
   try {
+    const midpoint = new Date((sess.startedAt + sess.endedAt) / 2).toISOString();
     let atm = await fetchAtmosphere({ lat: useLat, lon: useLon, isoTime: midpoint });
+    if (!isCurrent()) return null;
     if (!atm) {
       globalThis.console?.warn?.('hydrateSession: atmosphere fetch returned null for', id);
       sess.calculationStatus = 'atmosphere-unavailable';
-      await saveImportedData();
+      await persistSessionChanges();
       return null;
     }
     atm = _applyAtmOverrides(atm);
@@ -562,75 +600,46 @@ export async function hydrateSession(id, coords = {}) {
       aod: atm?.airQuality?.aod ?? null,
       targetUVI: atm.uvIndex ?? null,
     });
-    const bodyModifiers = {
-      glassBetween: !!sess.bodyExposure?.glassBetween,
-      sunscreenSPF: sess.bodyExposure?.sunscreenSPF || 0,
-    };
-    // Apply posture + surface-albedo multipliers to body fraction so
-    // hydrated doses match the live engine's accounting.
-    const baseFraction = sess.bodyExposure?.fraction ?? 0;
-    const postureMult = POSTURE_MULTIPLIERS[sess.posture] ?? 1.0;
-    const albedoMult = 1 + (SURFACE_ALBEDO[sess.surfaceAlbedo] ?? 0) * 0.5;
-    const skinIrradianceMultiplier = Math.max(0, Math.min(2, postureMult * albedoMult));
-    const modeledEyeExposure = bodyModifiers.glassBetween && sess.eyeExposure?.mode === 'direct'
-      ? { ...sess.eyeExposure, mode: 'glass-window' }
-      : sess.eyeExposure;
+    const exposure = sunSessionExposure(sess);
     sess.doses = computeChannelDoses({
       spectrum,
       durationMin: sess.durationMin,
-      bodyExposureFraction: baseFraction,
-      skinIrradianceMultiplier,
-      eyeExposure: modeledEyeExposure,
-      bodyModifiers,
+      ...exposure,
     });
     const sed = erythemalSED({
       spectrum,
       durationMin: sess.durationMin,
-      bodyExposureFraction: baseFraction,
-      skinIrradianceMultiplier,
-      bodyModifiers,
+      ...exposure,
     });
     // Read from one of two places, in priority order:
     //   1. sunDefaults.fitzpatrick (Light setup card)
     //   2. lightCircadian.skinType (Light & Circadian context card)
     // Falls back to Type I for a conservative burn-safety counter if the user
     // has not configured a skin type. The UI marks this as an assumption.
-    const lcSkin = state.importedData?.lightCircadian?.skinType;
-    const lcRoman = lcSkin && storeDeps.skinTypeToFitzpatrick(lcSkin);
-    const configuredFitzpatrick = state.importedData?.sunDefaults?.fitzpatrick || lcRoman || null;
-    const fitzpatrick = configuredFitzpatrick || 'I';
-    const psmTier = _normalizePSMTier(state.importedData?.sunDefaults?.photosensitiveMeds);
-    const medScale = photosensitiveMedScale(psmTier);
     const ocularActinicUV = retinalUVdose({
       spectrum,
-      eyeExposure: modeledEyeExposure,
+      eyeExposure: exposure.eyeExposure,
       zenithDeg: zenith,
-      glassBetween: bodyModifiers.glassBetween,
+      glassBetween: exposure.bodyModifiers.glassBetween,
     });
-    sess.safety = {
-      sed,
-      medFraction: fractionOfMED({ sed, fitzpatrick, medScale }),
-      ocularActinicUV,
-      retinalUV: ocularActinicUV,
-      fitzpatrick,
-      fitzpatrickAssumed: !configuredFitzpatrick,
-      photosensitiveMedTier: psmTier,
-      medicationThresholdUnknown: psmTier !== 'none',
-      // Legacy boolean kept for backward compat with consumers that
-      // haven't migrated to the tier field yet.
-      photosensitive: psmTier !== 'none',
-    };
+    sess.safety = sessionSafety(sed, ocularActinicUV, fractionOfMED);
     // Stamp the engine version so rehydrateStaleSessions can detect
     // sessions computed under older (buggy) versions and recompute.
     sess.engineVersion = SUN_ENGINE_VERSION;
     sess.calculationStatus = 'computed';
-    await saveImportedData();
+    await persistSessionChanges();
+    if (!isCurrent()) return null;
     runSessionAnalysis(sess);
     return sess;
   } catch (e) {
+    if (!isCurrent()) return null;
     globalThis.console?.warn?.('hydrateSession failed', e);
+    sess.doses = null;
+    sess.safety = null;
+    sess.atmosphere = null;
+    delete sess.engineVersion;
     sess.calculationStatus = 'calculation-error';
-    await saveImportedData();
+    await persistSessionChanges();
     return null;
   }
 }
@@ -656,6 +665,9 @@ export async function hydrateSession(id, coords = {}) {
 // get the promise back.
 export async function rehydrateStaleSessions() {
   const sessions = getSessions();
+  const data = state.importedData;
+  const profile = state.currentProfile;
+  const generation = _storeGeneration;
   const stale = sessions.filter(s =>
     s.endedAt &&
     s.location?.lat != null &&
@@ -667,6 +679,8 @@ export async function rehydrateStaleSessions() {
   // double-fetch the same session.
   let ok = 0;
   for (const s of stale) {
+    if (state.importedData !== data || state.currentProfile !== profile || generation !== _storeGeneration) break;
+    if (!sessions.includes(s)) continue;
     try {
       const result = await _runHydrateSession(s.id, { lat: s.location.lat, lon: s.location.lon }, {
         warnContext: `rehydrateStaleSessions: ${s.id}`,
@@ -680,5 +694,6 @@ export async function rehydrateStaleSessions() {
 }
 
 export function resetSunSessionsStoreState() {
+  _storeGeneration++;
   _hydrateInFlight.clear();
 }

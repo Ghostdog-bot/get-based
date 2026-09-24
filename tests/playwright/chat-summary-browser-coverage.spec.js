@@ -131,6 +131,8 @@ test('chat summary browser coverage streams saves refreshes and closes summaries
         && generatedThread.summaryModel === 'Summary Coverage Model'
         && generatedThread.summaryCost?.inputTokens === 64
         && saved?.threadId === 'summary-thread'
+        && saved.attribution === 'AI-generated'
+        && overlay?.querySelector('.chat-provider-attribution')?.textContent === 'AI-generated'
         && saved.content.includes('Retest vitamin D')
         && overlay?.dataset.syncRefreshSummaryId === saved.id
         && modalBody?.textContent.includes('Retest vitamin D') === true;
@@ -158,6 +160,14 @@ test('chat summary browser coverage streams saves refreshes and closes summaries
         configurable: true,
         value: { writeText: async text => { copiedSummary = text; } },
       });
+      saved.attribution = '<script>untrusted attribution</script>';
+      summaries.viewSavedSummary(saved.id);
+      summaries.copySummary();
+      await Promise.resolve();
+      outcomes.untrustedSummaryAttributionUsesSafeGenericLabel =
+        document.querySelector('#summary-modal-overlay .chat-provider-attribution')?.textContent === 'AI-generated'
+        && copiedSummary.endsWith('\n\nAI-generated');
+      saved.attribution = 'Written with Grok';
       summaries.viewSavedSummary(saved.id);
       await waitUntil(
         () => document.getElementById('summary-modal-overlay')?.classList.contains('show') === true,

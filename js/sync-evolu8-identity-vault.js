@@ -108,14 +108,20 @@ function readCommitToken(storage) {
  *   storage?: Storage | { getItem?: Function, setItem?: Function, removeItem?: Function },
  *   indexedDb?: IDBFactory | null,
  *   tokenFactory?: () => string,
+ *   lockManager?: { request?: Function } | null,
  * }} [options]
  */
 export function createEvolu8IdentityVault({
   storage = globalThis.localStorage,
   indexedDb = globalThis.indexedDB,
   tokenFactory = createCommitToken,
+  lockManager = globalThis.navigator?.locks,
 } = {}) {
+  // Invalidate in-flight work even when the first write has no token yet.
+  // Token rechecks also detect changes made by a different vault/context.
+  let revision = 0;
   const read = async () => {
+    const startedRevision = revision;
     const token = readCommitToken(storage);
     if (!token || !indexedDb) return null;
     try {
@@ -124,7 +130,8 @@ export function createEvolu8IdentityVault({
         'readonly',
         store => store.get(RECORD_KEY),
       ));
-      if (record?.version !== RECORD_VERSION
+      if (revision !== startedRevision || readCommitToken(storage) !== token
+          || record?.version !== RECORD_VERSION
           || record?.token !== token
           || typeof record?.ownerId !== 'string'
           || !record.ownerId
@@ -136,34 +143,62 @@ export function createEvolu8IdentityVault({
     }
   };
 
+  const withWriteLock = (operation) => {
+    if (typeof lockManager?.request !== 'function') {
+      throw new Error('Evolu 8 identity vault coordination is unavailable');
+    }
+    return lockManager.request('getbased-evolu8-identity-write', operation);
+  };
+
   const write = async ({ ownerId, mnemonic }) => {
     if (!indexedDb || typeof storage?.setItem !== 'function' || typeof storage?.getItem !== 'function') {
       throw new Error('Evolu 8 identity vault storage is unavailable');
     }
-    const token = String(tokenFactory() || '');
-    if (!token) throw new Error('Evolu 8 identity vault token is unavailable');
-    await accessVault(indexedDb, 'readwrite', store => store.put({
-      version: RECORD_VERSION,
-      token,
-      ownerId: String(ownerId),
-      mnemonic: String(mnemonic),
-    }, RECORD_KEY));
-    storage.setItem(EVOLU8_IDENTITY_TOKEN_KEY, token);
-    if (storage.getItem(EVOLU8_IDENTITY_TOKEN_KEY) !== token) {
-      throw new Error('Evolu 8 identity vault commit was not retained');
-    }
+    const publishToken = storage.setItem.bind(storage);
+    const readToken = storage.getItem.bind(storage);
+    const startedRevision = ++revision;
+    return withWriteLock(async () => {
+      if (revision !== startedRevision) throw new Error('Evolu 8 identity vault write was invalidated or superseded');
+      const previousToken = readCommitToken(storage);
+      const token = String(tokenFactory() || '');
+      if (!token) throw new Error('Evolu 8 identity vault token is unavailable');
+      await accessVault(indexedDb, 'readwrite', store => store.put({
+        version: RECORD_VERSION,
+        token,
+        ownerId: String(ownerId),
+        mnemonic: String(mnemonic),
+      }, RECORD_KEY));
+      if (revision !== startedRevision || readCommitToken(storage) !== previousToken) {
+        throw new Error('Evolu 8 identity vault write was invalidated or superseded');
+      }
+      publishToken(EVOLU8_IDENTITY_TOKEN_KEY, token);
+      if (readToken(EVOLU8_IDENTITY_TOKEN_KEY) !== token) {
+        throw new Error('Evolu 8 identity vault commit was not retained');
+      }
+    });
   };
 
   const invalidate = () => {
+    revision += 1;
     if (typeof storage?.removeItem !== 'function' || typeof storage?.getItem !== 'function') {
       throw new Error('Evolu 8 identity vault cannot be invalidated');
     }
-    storage.removeItem(EVOLU8_IDENTITY_TOKEN_KEY);
-    if (storage.getItem(EVOLU8_IDENTITY_TOKEN_KEY) !== null) {
-      throw new Error('Evolu 8 identity vault invalidation was not retained');
-    }
+    const removeToken = storage.removeItem.bind(storage);
+    const readToken = storage.getItem.bind(storage);
+    const clearToken = () => {
+      removeToken(EVOLU8_IDENTITY_TOKEN_KEY);
+      if (readToken(EVOLU8_IDENTITY_TOKEN_KEY) !== null) {
+        throw new Error('Evolu 8 identity vault invalidation was not retained');
+      }
+    };
+    clearToken();
     if (!indexedDb) return Promise.resolve();
-    return accessVault(indexedDb, 'readwrite', store => store.delete(RECORD_KEY)).catch(() => {});
+    return Promise.resolve().then(() => withWriteLock(async () => {
+      // A writer ahead of this deletion may have published since the synchronous
+      // invalidation. Clear again under the lock before deleting its record.
+      clearToken();
+      await accessVault(indexedDb, 'readwrite', store => store.delete(RECORD_KEY)).catch(() => {});
+    }));
   };
 
   return { invalidate, read, write };

@@ -49,6 +49,18 @@ test('chat render browser coverage handles lens sources and rich transcript UI',
         && sourceHost.querySelectorAll('.chat-lens-source').length === 2;
       outcomes.lensSourcesEmptyInputReturnsBlank = chatRender._renderLensSources([], '') === '';
 
+      const { appendDiscussionOutputAttribution } = await import('/js/chat-discussion-round-view.js');
+      const liveDiscussion = document.createElement('div');
+      const genericAdded = appendDiscussionOutputAttribution({
+        threadId: null, aiMsgEl: liveDiscussion, provider: 'openrouter', modelId: 'example/model',
+      });
+      const grokAdded = appendDiscussionOutputAttribution({
+        threadId: null, aiMsgEl: liveDiscussion, provider: 'openrouter', modelId: 'x-ai/grok-4',
+      });
+      outcomes.liveDiscussionMatchesTranscriptAttribution = !genericAdded && grokAdded
+        && liveDiscussion.querySelectorAll('.chat-provider-attribution').length === 1
+        && liveDiscussion.textContent === 'Written with Grok';
+
       const attentionWrapper = document.createElement('details');
       attentionWrapper.className = 'rec-chat-wrapper rec-chat-unseen';
       attentionWrapper.style.cssText = 'position:fixed;top:12px;left:12px;z-index:9999';
@@ -174,8 +186,10 @@ test('chat render browser coverage handles lens sources and rich transcript UI',
         && costFootnote.includes('300 tokens')
         && costFootnote.includes('web')
         && costFootnote.includes('encrypted');
-      outcomes.grokOutputIsVisiblyAttributed = rendered.querySelectorAll('.chat-provider-attribution').length === 1
-        && rendered.querySelector('.chat-provider-attribution')?.textContent === 'Written with Grok';
+      const outputLabels = [...rendered.querySelectorAll('.chat-provider-attribution')].map(el => el.textContent);
+      outcomes.grokOutputIsVisiblyAttributed = outputLabels.includes('Written with Grok');
+      outcomes.otherAIOutputDoesNotRepeatGenericLabel = !outputLabels.includes('AI-generated')
+        && !rendered.querySelector('.chat-user .chat-provider-attribution');
       outcomes.assistantExtrasRender = rendered.textContent.includes('[stopped]')
         && rendered.textContent.includes('[output limit reached - ask "continue" to finish]')
         && rendered.querySelector('.chat-action-bar') !== null
@@ -217,6 +231,18 @@ test('chat render browser coverage handles lens sources and rich transcript UI',
         && seenSummaryStyle.backgroundColor !== 'rgba(0, 0, 0, 0)';
 
       state.currentThreadId = 'render-window-coverage';
+      state.chatHistory = [
+        { role: 'assistant', content: 'Provider unavailable', error: true },
+        { role: 'assistant', content: 'Grok unavailable', agentId: 'grok', error: true },
+        { role: 'assistant', content: 'Partial answer', stopped: true },
+        { role: 'assistant', content: 'Limited answer', agentId: 'grok', truncated: true },
+      ];
+      chatRender.renderChatMessages();
+      outcomes.errorAndGenericPartialRecordsHaveNoRepeatedLabelButGrokKeepsBranding =
+        !rendered.querySelector('#chat-msg-0 .chat-provider-attribution')
+        && !rendered.querySelector('#chat-msg-1 .chat-provider-attribution')
+        && !rendered.querySelector('#chat-msg-2 .chat-provider-attribution')
+        && rendered.querySelector('#chat-msg-3 .chat-provider-attribution')?.textContent === 'Written with Grok';
       state.chatHistory = Array.from({ length: 260 }, (_, index) => ({
         role: index % 2 ? 'assistant' : 'user',
         content: `Windowed message ${index}`,

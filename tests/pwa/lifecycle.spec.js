@@ -6,11 +6,16 @@ test.use({ serviceWorkers: 'allow' });
 async function openInstalledApp(page, origin) {
   await page.addInitScript(() => {
     for (const key of ['emptyTour', 'tour']) localStorage.setItem(`labcharts-default-${key}`, 'completed');
+    // This is an installed, returning-user scenario. The delayed first-visit
+    // analytics notice otherwise moves Reload between pointer targeting and click
+    // (observed in the Firefox CI trace), without exercising worker activation.
+    localStorage.setItem('labcharts-analytics-consent-seen', '1');
   });
   await page.goto(`${origin}/app?dev-sw=1`, { waitUntil: 'networkidle' });
   await expect(page.locator('html[data-app-ready]')).toBeAttached();
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => true));
   await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+  await expect(page.locator('#analytics-consent-banner')).toHaveCount(0);
   await page.evaluate(async () => {
     window.endTour?.();
     (await import('/js/chat-panel.js')).closeChatPanel();
@@ -46,6 +51,13 @@ test('installed shell opens lazy features and reloads with the origin disconnect
       await (await import('/js/views.js')).navigate('light');
     });
     await expect(page.locator('.light-page')).toBeVisible();
+    const offlineContext = await page.evaluate(async () => {
+      const { state } = await import('/js/state.js');
+      state.importedData.sunDefaults = { fitzpatrick: 'III' };
+      state.importedData.entries = [{ date: '2026-09-01', markers: { 'vitamins.vitaminD': 75 } }];
+      return (await import('/js/sun-onboarding-ai.js')).buildOnboardingContext();
+    });
+    expect(offlineContext).toContain('Latest 25-OH-D: 75 nmol/l (2026-09-01)');
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.locator('#main-content')).toBeVisible();
     expect(errors).toEqual([]);
@@ -80,7 +92,12 @@ test('failed update preserves the installed app; retry updates two tabs without 
     expect(await page.evaluate(() => window.APP_BUILD_ID)).toBe('build-a');
     expect(await page.evaluate(() => localStorage.getItem('pwa-retained-data'))).toBe('retained');
     await expect(page.locator('#version-update-banner')).toHaveCount(0);
-    await expect.poll(() => page.evaluate(async () => !(await navigator.serviceWorker.getRegistration()).installing)).toBe(true);
+    // Worker state and registration.installing propagate separately across
+    // browser processes. Require the slot to clear before triggering retry,
+    // using the same lifecycle budget as installation/activation below.
+    await expect.poll(() => page.evaluate(async () =>
+      (await navigator.serviceWorker.getRegistration()).installing?.state ?? 'none'
+    ), { timeout: 30_000 }).toBe('none');
     server.state.failPath = '';
     server.state.holdPath = '/css/settings.css';
     await page.evaluate(async () => {
@@ -104,11 +121,15 @@ test('failed update preserves the installed app; retry updates two tabs without 
     await expect(other.locator('#version-update-banner')).toContainText('Reload');
     expect(await other.evaluate(() => window.APP_BUILD_ID)).toBe('build-a');
     await other.locator('[data-version-update-action="apply"]').click();
-    await expect.poll(() => other.evaluate(() => window.APP_BUILD_ID).catch(() => null)).toBe('build-b');
-    await expect(page.locator('html[data-app-ready]')).toBeAttached();
-    await expect(other.locator('html[data-app-ready]')).toBeAttached();
+    await expect.poll(() => other.evaluate(() => window.APP_BUILD_ID).catch(() => null), { timeout: 30_000 }).toBe('build-b');
+    // Build ID is stamped before async profile hydration finishes. Give both
+    // offline reloads the same bounded lifecycle budget as worker activation.
+    await expect(page.locator('html[data-app-ready]')).toBeAttached({ timeout: 30_000 });
+    await expect(other.locator('html[data-app-ready]')).toBeAttached({ timeout: 30_000 });
     expect(await page.evaluate(() => localStorage.getItem('pwa-retained-data'))).toBe('retained');
     expect(await page.evaluate(async () => (await import('/js/state.js')).state.importedData.entries))
+      .toEqual([{ date: '2026-09-01', markers: { 'biochemistry.glucose': 5.8 } }]);
+    expect(await other.evaluate(async () => (await import('/js/state.js')).state.importedData.entries))
       .toEqual([{ date: '2026-09-01', markers: { 'biochemistry.glucose': 5.8 } }]);
     // WebKit can transiently reject CacheStorage reads while activation settles.
     // Retry the read, while still requiring exactly the new build's cache.

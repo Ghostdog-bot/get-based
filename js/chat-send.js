@@ -12,7 +12,7 @@ import {
 } from './api.js';
 import { buildVisionContent, formatImageBlock } from './image-utils.js';
 import {
-  clearAttachments, configureChatImages, getPendingAttachments, hasPendingAttachments,
+  consumeAttachments, configureChatImages, getPendingAttachments, hasPendingAttachments,
   rememberMessageAttachments,
 } from './chat-images.js';
 import {
@@ -84,6 +84,7 @@ import { getAIOutputAttribution } from './cli-agent-brand-assets.js';
 /** @type {AbortController | null} */
 let _chatAbortController = null;
 let chatSendRevision = 0;
+let chatSavePending = false;
 
 /** @type {{ container: HTMLElement, typingEl: HTMLElement, aiMsgEl: HTMLElement | null, labelEl: HTMLElement | null, personalityName: string, isCurrent: () => boolean } | null} */
 let _activeChatGenerationUI = null;
@@ -239,7 +240,8 @@ export function setSendButtonMode(btn, mode) {
 // ═══════════════════════════════════════════════
 // SEND MESSAGE
 // ═══════════════════════════════════════════════
-export async function sendChatMessage() {
+/** @param {{ prepareRetry?: (() => boolean) | null, retry?: { content: string, attachments: any[] } | null }} [options] */
+export async function sendChatMessage({ prepareRetry = null, retry = null } = {}) {
   const useCodexAgent = isCodexChatBackend();
   if (!hasChatResponseBackend()) {
     renderChatMessages(); // Re-render to show setup guide
@@ -251,7 +253,7 @@ export async function sendChatMessage() {
     _chatAbortController = null;
     return;
   }
-  if (isChatThreadInputBlocked()) return;
+  if (chatSavePending || isChatThreadInputBlocked()) return;
   if (useCodexAgent && !getAssistantExecutionRoute().available) {
     showNotification('The selected CLI model is unavailable. Choose an available model in chat or AI settings.', 'info');
     return;
@@ -261,10 +263,11 @@ export async function sendChatMessage() {
   const sendBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById('chat-send-btn'));
   const container = /** @type {HTMLElement | null} */ (document.getElementById('chat-messages'));
   if (!input || !sendBtn || !container) return;
+  const inputValue = input.value;
   const pendingEditText = getPendingChatMessageEditText();
-  const isEditedRetry = pendingEditText != null;
-  const text = (pendingEditText ?? input.value).trim();
-  const hasImages = !isEditedRetry && hasPendingAttachments();
+  const isEditedRetry = !retry && pendingEditText != null;
+  const text = (retry?.content ?? pendingEditText ?? input.value).trim();
+  const hasImages = retry ? retry.attachments.length > 0 : !isEditedRetry && hasPendingAttachments();
   if (!text && !hasImages) return;
   const revision = ++chatSendRevision;
   const profile = state.currentProfile;
@@ -289,7 +292,7 @@ export async function sendChatMessage() {
     || (useCodexAgent ? _msgAgentId !== getAgentHostAgent() || _msgAgentTarget !== getAgentHostTarget() : _msgProvider !== getAIProvider())) return;
 
   // Capture attachments before clearing (they're ephemeral)
-  const attachments = hasImages ? [...getPendingAttachments()] : [];
+  const attachments = retry ? retry.attachments : hasImages ? [...getPendingAttachments()] : [];
 
   // Ensure we have a thread
   if (!state.currentThreadId) {
@@ -298,7 +301,9 @@ export async function sendChatMessage() {
     threadId = state.currentThreadId;
   }
   if (!canSaveChatHistory()) return;
-  const editPreparation = prepareChatMessageEditSend();
+  const previousHistory = state.chatHistory.slice();
+  if (prepareRetry && !prepareRetry()) return;
+  const editPreparation = retry ? null : prepareChatMessageEditSend();
   if (editPreparation === false) return;
 
   const discussionState = text && !hasImages ? getCurrentDiscussionState() : null;
@@ -315,13 +320,26 @@ export async function sendChatMessage() {
     rememberMessageAttachments(userMsg, attachments);
   }
   state.chatHistory.push(userMsg);
-  if (!editPreparation) {
-    resetChatComposer();
-    clearAttachments();
-  }
+  const sendingHistory = state.chatHistory;
   renderChatMessages();
-  await saveChatHistory(); // persist immediately so messages survive API failures
+  let saved = false;
+  chatSavePending = true;
+  try { saved = await saveChatHistory(); }
+  finally { chatSavePending = false; }
   if (!scopeIsCurrent()) return;
+  if (!saved) {
+    if (state.chatHistory === sendingHistory && sendingHistory.at(-1) === userMsg) {
+      sendingHistory.splice(0, sendingHistory.length, ...previousHistory);
+      renderChatMessages();
+      if (editPreparation) editPreparation.restore();
+    }
+    showNotification('Your message could not be saved, so it was not sent. Please try again.', 'error', 6000);
+    return;
+  }
+  if (!editPreparation && !retry) {
+    if (input.value === inputValue) resetChatComposer();
+    consumeAttachments(attachments);
+  }
 
   if (isFirstMessage) {
     autoNameThread(state.currentThreadId, text);
@@ -531,7 +549,9 @@ export async function sendChatMessage() {
       modelId: _msgModelId,
       modelDisplay: _msgModelDisplay,
     });
-    if (attribution) {
+    // Match restored transcripts: retain Grok branding, not a generic label on
+    // every reply. First-use AI disclosure and standalone exports are separate.
+    if (attribution === 'Written with Grok') {
       const attributionEl = document.createElement('div');
       attributionEl.className = 'chat-provider-attribution';
       attributionEl.textContent = attribution;

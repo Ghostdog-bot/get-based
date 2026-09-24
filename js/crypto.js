@@ -110,6 +110,7 @@ const SENSITIVE_PATTERNS = [
   /^labcharts-.+-imported-corrupt$/,
   /^labcharts-.+-chat$/,
   /^labcharts-.+-chat-threads$/,
+  /^labcharts-.+-agent-draft-claims$/,
   /^labcharts-.+-chat-t_.+$/,
   /^labcharts-.+-chatDraft_.+$/,
   /^labcharts-.+-chatPersonalityCustom$/,
@@ -400,6 +401,9 @@ export async function encryptedSetItem(key, value) {
   const valueForStorage = key.endsWith('-imported')
     ? (await transformWhoopStorage(key, value, 'protect')).value
     : value;
+  if (isSensitiveKey(key) && getEncryptionEnabled() && !_sessionKey) {
+    throw new Error('Profile storage is locked; unlock encryption before saving.');
+  }
   let stored;
   if (isSensitiveKey(key) && getEncryptionEnabled() && _sessionKey) {
     const { iv, ciphertext } = await encrypt(_sessionKey, valueForStorage);

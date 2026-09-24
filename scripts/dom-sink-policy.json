@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "scope": "Every non-generated JavaScript module under js/",
   "reviewRule": "Any added or modified HTML-writing sink requires security review and a policy refresh.",
-  "scannedFiles": 732,
+  "scannedFiles": 737,
   "sinkCount": 552,
   "files": {
     "js/backup.js": {
@@ -136,7 +136,7 @@
     },
     "js/chat-summaries.js": {
       "count": 5,
-      "digest": "cac5aa404325deb9f7c2387d7d1bc9e61d255cb0c7d7b88d51d59280a0abacd3",
+      "digest": "d3e500a3d10f2132c9d0ab906893f50f7779714b0ea3ee82fcdf895da5c1941c",
       "kinds": {
         "document.write": 1,
         "innerHTML": 4

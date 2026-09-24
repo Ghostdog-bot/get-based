@@ -36,6 +36,8 @@ vi.mock('../js/import-drop-zone-runtime.js', () => ({
   showDropZoneImportNotification: mocks.showDropZoneImportNotification,
 }));
 
+const { importDispatch } = await import('../js/pdf-import-progress.js');
+
 const { handleImportInputChange } = await import('../js/import-file-input.js');
 
 function importBuckets(overrides = {}) {
@@ -99,6 +101,7 @@ describe('import file input runtime routing', () => {
       'Could not load import UI. Reload the app to finish updating, then try again.',
       'error',
     );
+    expect(importDispatch.busy).toBe(false);
     errorLog.mockRestore();
   });
 
@@ -184,4 +187,155 @@ describe('import file input runtime routing', () => {
     expect(mocks.handleDropZoneDNAFile).not.toHaveBeenCalled();
     expect(mocks.handleDropZoneMtDNAFile).not.toHaveBeenCalled();
   });
+});
+
+// The selected files belong to the profile active before lazy loading/classification.
+describe('file selection ownership', () => {
+  it.each(['load', 'classify'])('rejects a profile switch during %s', async boundary => {
+    const { state } = await import('../js/state.js');
+    vi.clearAllMocks();
+    state.currentProfile = 'origin';
+    const file = makeFile('cycle.csv');
+    mocks.isDropZoneImportRunning.mockReturnValue(false);
+    mocks.loadImportUI.mockImplementation(async () => {
+      if (boundary === 'load') state.currentProfile = 'replacement';
+      return mocks.importModule;
+    });
+    mocks.importModule.classifyImportFiles.mockImplementation(async () => {
+      if (boundary === 'classify') state.currentProfile = 'replacement';
+      return importBuckets({ textFiles: [file] });
+    });
+    const input = await runInput([file]);
+    expect(mocks.importModule.handleTextFile).not.toHaveBeenCalled();
+    expect(input.value).toBe('');
+  });
+});
+
+it.each(['load', 'classify'])('rejects replacement data during %s without a profile switch', async boundary => {
+  const { state } = await import('../js/state.js');
+  vi.clearAllMocks();
+  state.currentProfile = 'origin'; state.importedData = {};
+  const file = makeFile('cycle.csv');
+  mocks.isDropZoneImportRunning.mockReturnValue(false);
+  mocks.loadImportUI.mockImplementation(async () => {
+    if (boundary === 'load') state.importedData = {};
+    return mocks.importModule;
+  });
+  mocks.importModule.classifyImportFiles.mockImplementation(async () => {
+    if (boundary === 'classify') state.importedData = {};
+    return importBuckets({ textFiles: [file] });
+  });
+  await runInput([file]);
+  expect(mocks.importModule.handleTextFile).not.toHaveBeenCalled();
+});
+it.each(['success', 'failure'])('preserves a newer file selection after older load %s', async outcome => {
+  vi.clearAllMocks();
+  mocks.isDropZoneImportRunning.mockReturnValue(false);
+  const original = makeFile('original.csv'), newer = makeFile('newer.csv');
+  const target = makeInput([original]);
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  mocks.loadImportUI.mockImplementationOnce(async () => {
+    target.files = [newer]; target.value = 'new selection';
+    if (outcome === 'failure') throw new Error('load failed');
+    return mocks.importModule;
+  });
+  mocks.importModule.classifyImportFiles.mockResolvedValue(importBuckets());
+  try {
+    await handleImportInputChange({ target });
+    expect(target.value).toBe('new selection');
+    if (outcome === 'success') expect(mocks.importModule.classifyImportFiles).toHaveBeenCalledWith([original]);
+  } finally { errors.mockRestore(); }
+});
+
+describe('mixed selection boundaries', () => {
+  let state;
+  beforeEach(async () => {
+    ({ state } = await import('../js/state.js'));
+    vi.resetAllMocks(); state.currentProfile = 'origin'; state.importedData = {};
+    mocks.loadImportUI.mockResolvedValue(mocks.importModule);
+    mocks.importModule.classifyImportFiles.mockResolvedValue(importBuckets());
+  });
+  it.each(['profile', 'data'])('rejects DNA header completion after %s replacement', async kind => {
+    const file = { name: 'ancestry.txt', slice: () => ({ text: async () => {
+      if (kind === 'profile') state.currentProfile = 'other'; else state.importedData = {};
+      return '#AncestryDNA';
+    } }) };
+    mocks.importModule.classifyImportFiles.mockResolvedValue(importBuckets({ dnaFiles: [file] }));
+    await runInput([file]);
+    expect(mocks.handleDropZoneDNAFile).not.toHaveBeenCalled();
+    expect(mocks.handleDropZoneMtDNAFile).not.toHaveBeenCalled();
+  });
+  it.each([
+    ['jsonFiles', 'importDropZoneJSONFile'], ['cycleFiles', 'handleCycleImportFile'],
+    ['textFiles', 'handleTextFile'], ['imageFiles', 'handleImageFile'],
+  ])('stops remaining %s and PDF work after profile navigation', async (bucket, handler) => {
+    const files = [makeFile('first'), makeFile('second')], pdf = makeFile('last.pdf');
+    const fn = mocks[handler] || mocks.importModule[handler];
+    fn.mockImplementationOnce(async () => { state.currentProfile = 'other'; });
+    mocks.importModule.classifyImportFiles.mockResolvedValue(importBuckets({ [bucket]: files, pdfFiles: [pdf] }));
+    await runInput([...files, pdf]);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(mocks.importModule.handlePDFFile).not.toHaveBeenCalled();
+  });
+  it('allows intentional same-profile JSON data replacement before the next file', async () => {
+    const json = makeFile('profile.json'), text = makeFile('cycle.csv');
+    mocks.importDropZoneJSONFile.mockImplementationOnce(async () => { state.importedData = {}; });
+    mocks.importModule.classifyImportFiles.mockResolvedValue(importBuckets({ jsonFiles: [json], textFiles: [text] }));
+    await runInput([json, text]);
+    expect(mocks.importModule.handleTextFile).toHaveBeenCalledExactlyOnceWith(text);
+  });
+  it('does not erase a newer selection if an import handler rejects', async () => {
+    const target = makeInput([makeFile('bad.csv')]);
+    mocks.importModule.classifyImportFiles.mockResolvedValue(importBuckets({ textFiles: target.files }));
+    mocks.importModule.handleTextFile.mockImplementationOnce(async () => { target.value = 'new selection'; throw new Error('read failed'); });
+    await expect(handleImportInputChange({ target })).rejects.toThrow('read failed');
+    expect(target.value).toBe('new selection');
+    expect(importDispatch.busy).toBe(false);
+  });
+});
+
+describe('overlapping picker invocations', () => {
+  beforeEach(async () => {
+    vi.resetAllMocks();
+    mocks.isDropZoneImportRunning.mockImplementation(() => importDispatch.busy);
+    const { state } = await import('../js/state.js');
+    state.currentProfile = 'origin'; state.importedData = {};
+    mocks.loadImportUI.mockResolvedValue(mocks.importModule);
+    mocks.importModule.classifyImportFiles.mockImplementation(async files => importBuckets({ textFiles: files }));
+  });
+  it.each(['load', 'classify', 'header', 'between-files'])('rejects a second selection during %s and unlocks afterwards', async boundary => {
+    let release, entered;
+    const pending = new Promise(resolve => { release = resolve; });
+    const started = new Promise(resolve => { entered = resolve; });
+    const older = makeFile('older.csv'), newer = makeFile('newer.csv'), remaining = makeFile('remaining.csv');
+    if (boundary === 'load') mocks.loadImportUI.mockImplementationOnce(async () => { entered(); await pending; return mocks.importModule; });
+    if (boundary === 'classify') mocks.importModule.classifyImportFiles.mockImplementationOnce(async () => { entered(); await pending; return importBuckets({ textFiles: [older] }); });
+    if (boundary === 'header') {
+      older.slice = () => ({ text: async () => { entered(); await pending; return '#AncestryDNA'; } });
+      mocks.importModule.classifyImportFiles.mockResolvedValueOnce(importBuckets({ dnaFiles: [older] }));
+    }
+    if (boundary === 'between-files') mocks.importModule.handleTextFile.mockImplementationOnce(async () => { entered(); await pending; });
+    const oldTask = runInput(boundary === 'between-files' ? [older, remaining] : [older]);
+    await started;
+    expect(importDispatch.busy).toBe(true);
+    expect((await runInput([newer])).value).toBe('');
+    expect(mocks.loadImportUI).toHaveBeenCalledTimes(1);
+    release(); await oldTask;
+    expect(importDispatch.busy).toBe(false);
+    expect(mocks.importModule.handleTextFile.mock.calls.map(([file]) => file.name))
+      .toEqual(boundary === 'between-files' ? ['older.csv', 'remaining.csv'] : boundary === 'header' ? [] : ['older.csv']);
+    if (boundary === 'header') expect(mocks.handleDropZoneDNAFile).toHaveBeenCalledExactlyOnceWith(older);
+    else expect(mocks.handleDropZoneDNAFile).not.toHaveBeenCalled();
+    await runInput([newer]);
+    expect(mocks.importModule.handleTextFile).toHaveBeenLastCalledWith(newer);
+    expect(importDispatch.busy).toBe(false);
+  });
+});
+
+it('releases the picker lock when classification rejects', async () => {
+  mocks.isDropZoneImportRunning.mockImplementation(() => importDispatch.busy);
+  mocks.loadImportUI.mockResolvedValue(mocks.importModule);
+  mocks.importModule.classifyImportFiles.mockRejectedValueOnce(new Error('classification failed'));
+  await expect(runInput([makeFile('bad.csv')])).rejects.toThrow('classification failed');
+  expect(importDispatch.busy).toBe(false);
 });

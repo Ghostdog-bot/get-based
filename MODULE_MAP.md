@@ -9,9 +9,9 @@ The human-maintained architecture contract is in [`ARCHITECTURE.md`](ARCHITECTUR
 
 | Metric | Current |
 | --- | ---: |
-| Modules | 781 |
-| Internal import edges | 3308 |
-| Dynamic internal edges | 113 |
+| Modules | 788 |
+| Internal import edges | 3333 |
+| Dynamic internal edges | 115 |
 | Modules participating in cycles | 0 |
 | Cyclic components | 0 |
 | Largest cyclic component | 0 |
@@ -64,16 +64,16 @@ High fan-in modules have many dependants; high fan-out modules coordinate many d
 
 | High fan-in | Dependants | High fan-out | Imports |
 | --- | ---: | --- | ---: |
-| [`js/utils.js`](js/utils.js) | 288 | [`js/app-shell-hooks.js`](js/app-shell-hooks.js) | 78 |
-| [`js/state.js`](js/state.js) | 196 | [`js/chat-send.js`](js/chat-send.js) | 42 |
-| [`js/caught-error.js`](js/caught-error.js) | 88 | [`js/app-light-sun-modules.js`](js/app-light-sun-modules.js) | 36 |
+| [`js/utils.js`](js/utils.js) | 289 | [`js/app-shell-hooks.js`](js/app-shell-hooks.js) | 78 |
+| [`js/state.js`](js/state.js) | 199 | [`js/chat-send.js`](js/chat-send.js) | 42 |
+| [`js/caught-error.js`](js/caught-error.js) | 89 | [`js/app-light-sun-modules.js`](js/app-light-sun-modules.js) | 36 |
 | [`js/modal-lifecycle.js`](js/modal-lifecycle.js) | 81 | [`js/settings.js`](js/settings.js) | 30 |
 | [`js/data.js`](js/data.js) | 79 | [`js/sync-configure.js`](js/sync-configure.js) | 28 |
-| [`js/profile.js`](js/profile.js) | 50 | [`js/pdf-import.js`](js/pdf-import.js) | 27 |
+| [`js/profile.js`](js/profile.js) | 51 | [`js/pdf-import.js`](js/pdf-import.js) | 27 |
 | [`js/api.js`](js/api.js) | 46 | [`js/wearables-connect.js`](js/wearables-connect.js) | 27 |
 | [`js/schema.js`](js/schema.js) | 39 | [`js/lab-context.js`](js/lab-context.js) | 24 |
-| [`js/ai-feature-routing.js`](js/ai-feature-routing.js) | 36 | [`js/export.js`](js/export.js) | 23 |
-| [`js/crypto.js`](js/crypto.js) | 36 | [`js/views.js`](js/views.js) | 22 |
+| [`js/crypto.js`](js/crypto.js) | 38 | [`js/export.js`](js/export.js) | 23 |
+| [`js/ai-feature-routing.js`](js/ai-feature-routing.js) | 36 | [`js/views.js`](js/views.js) | 22 |
 | [`js/data-merge.js`](js/data-merge.js) | 34 | [`js/biology-scores.js`](js/biology-scores.js) | 20 |
 | [`js/chat-runtime.js`](js/chat-runtime.js) | 21 | [`js/chat-render.js`](js/chat-render.js) | 20 |
 | [`js/utils-runtime.js`](js/utils-runtime.js) | 21 | [`js/dashboard-view-composition.js`](js/dashboard-view-composition.js) | 20 |
@@ -105,12 +105,13 @@ Native browser modules shipped with the static application.
 
 </details>
 
-<details><summary><code>agent</code> family — 10 modules</summary>
+<details><summary><code>agent</code> family — 11 modules</summary>
 
 - [`js/agent-chat-backend.js`](js/agent-chat-backend.js) → [`js/agent-chat-client.js`](js/agent-chat-client.js), [`js/agent-chat-context.js`](js/agent-chat-context.js), [`js/agent-chat-settings.js`](js/agent-chat-settings.js), [`js/agent-tool-bindings.js`](js/agent-tool-bindings.js), [`js/agent-tool-runtime.js`](js/agent-tool-runtime.js), [`js/ai-execution-routing.js`](js/ai-execution-routing.js), [`shared/agent-host-protocol.js`](shared/agent-host-protocol.js)
 - [`js/agent-chat-client.js`](js/agent-chat-client.js) → [`shared/agent-host-protocol.js`](shared/agent-host-protocol.js)
 - [`js/agent-chat-context.js`](js/agent-chat-context.js) → no in-scope imports
 - [`js/agent-chat-settings.js`](js/agent-chat-settings.js) → [`js/agent-host-discovery.js`](js/agent-host-discovery.js) *(dynamic)*, [`js/crypto-key-cache.js`](js/crypto-key-cache.js), [`js/crypto.js`](js/crypto.js)
+- [`js/agent-draft-claims.js`](js/agent-draft-claims.js) → [`js/chat-storage-safety.js`](js/chat-storage-safety.js), [`js/crypto.js`](js/crypto.js)
 - [`js/agent-drafts.js`](js/agent-drafts.js) → [`js/agent-tool-bindings.js`](js/agent-tool-bindings.js), [`js/chat-message-action-attrs.js`](js/chat-message-action-attrs.js), [`js/data-merge.js`](js/data-merge.js), [`js/data.js`](js/data.js), [`js/marker-detail-store.js`](js/marker-detail-store.js), [`js/nutrition-store.js`](js/nutrition-store.js), [`js/profile.js`](js/profile.js), [`js/state.js`](js/state.js), [`js/supplement-medication-domain.js`](js/supplement-medication-domain.js), [`js/utils.js`](js/utils.js), [`js/wearables-manual.js`](js/wearables-manual.js)
 - [`js/agent-feature-inference.js`](js/agent-feature-inference.js) → [`js/agent-chat-client.js`](js/agent-chat-client.js), [`js/agent-chat-settings.js`](js/agent-chat-settings.js), [`js/cloud-ai-consent.js`](js/cloud-ai-consent.js) *(dynamic)*, [`shared/agent-host-protocol.js`](shared/agent-host-protocol.js)
 - [`js/agent-host-discovery.js`](js/agent-host-discovery.js) → [`js/agent-chat-client.js`](js/agent-chat-client.js), [`shared/agent-host-protocol.js`](shared/agent-host-protocol.js)
@@ -187,13 +188,14 @@ Native browser modules shipped with the static application.
 
 </details>
 
-<details><summary><code>biology</code> family — 24 modules</summary>
+<details><summary><code>biology</code> family — 25 modules</summary>
 
 - [`js/biology-score-ai-context.js`](js/biology-score-ai-context.js) → [`js/biology-score-coverage-planner.js`](js/biology-score-coverage-planner.js), [`js/biology-score-engine.js`](js/biology-score-engine.js), [`js/biology-scores.js`](js/biology-scores.js)
-- [`js/biology-score-ai.js`](js/biology-score-ai.js) → [`js/ai-feature-routing.js`](js/ai-feature-routing.js), [`js/api.js`](js/api.js), [`js/biology-score-coverage-planner.js`](js/biology-score-coverage-planner.js), [`js/biology-score-panel-policy.js`](js/biology-score-panel-policy.js), [`js/profile-load-safety.js`](js/profile-load-safety.js), [`js/profile.js`](js/profile.js), [`js/state.js`](js/state.js), [`shared/agent-host-protocol.js`](shared/agent-host-protocol.js)
+- [`js/biology-score-ai-protocol.js`](js/biology-score-ai-protocol.js) → no in-scope imports
+- [`js/biology-score-ai.js`](js/biology-score-ai.js) → [`js/ai-feature-routing.js`](js/ai-feature-routing.js), [`js/api.js`](js/api.js), [`js/biology-score-ai-protocol.js`](js/biology-score-ai-protocol.js) *(dynamic)*, [`js/biology-score-coverage-planner.js`](js/biology-score-coverage-planner.js), [`js/biology-score-panel-policy.js`](js/biology-score-panel-policy.js), [`js/profile-load-safety.js`](js/profile-load-safety.js), [`js/profile.js`](js/profile.js), [`js/state.js`](js/state.js), [`shared/agent-host-protocol.js`](shared/agent-host-protocol.js)
 - [`js/biology-score-blood-flow.js`](js/biology-score-blood-flow.js) → [`js/biology-score-engine.js`](js/biology-score-engine.js)
 - [`js/biology-score-coherence.js`](js/biology-score-coherence.js) → [`js/biology-score-contract.js`](js/biology-score-contract.js), [`js/biology-score-engine.js`](js/biology-score-engine.js)
-- [`js/biology-score-context-ai.js`](js/biology-score-context-ai.js) → [`js/ai-feature-routing.js`](js/ai-feature-routing.js), [`js/api.js`](js/api.js), [`js/biology-score-persistence.js`](js/biology-score-persistence.js), [`js/caught-error.js`](js/caught-error.js), [`js/data.js`](js/data.js), [`js/health-goals-utils.js`](js/health-goals-utils.js), [`js/lab-context.js`](js/lab-context.js), [`js/marker-placement.js`](js/marker-placement.js), [`js/profile-data-writes.js`](js/profile-data-writes.js), [`js/state.js`](js/state.js), [`js/supplement-context.js`](js/supplement-context.js), [`js/supplement-medication-domain.js`](js/supplement-medication-domain.js), [`js/utils.js`](js/utils.js)
+- [`js/biology-score-context-ai.js`](js/biology-score-context-ai.js) → [`js/ai-feature-routing.js`](js/ai-feature-routing.js), [`js/api.js`](js/api.js), [`js/biology-score-ai-protocol.js`](js/biology-score-ai-protocol.js) *(dynamic)*, [`js/biology-score-ai.js`](js/biology-score-ai.js), [`js/biology-score-persistence.js`](js/biology-score-persistence.js), [`js/caught-error.js`](js/caught-error.js), [`js/data.js`](js/data.js), [`js/health-goals-utils.js`](js/health-goals-utils.js), [`js/lab-context.js`](js/lab-context.js), [`js/marker-placement.js`](js/marker-placement.js), [`js/profile-data-writes.js`](js/profile-data-writes.js), [`js/profile.js`](js/profile.js), [`js/state.js`](js/state.js), [`js/supplement-context.js`](js/supplement-context.js), [`js/supplement-medication-domain.js`](js/supplement-medication-domain.js), [`js/utils.js`](js/utils.js)
 - [`js/biology-score-contract.js`](js/biology-score-contract.js) → [`js/biology-score-mappings.js`](js/biology-score-mappings.js)
 - [`js/biology-score-copy.js`](js/biology-score-copy.js) → no in-scope imports
 - [`js/biology-score-coverage-planner.js`](js/biology-score-coverage-planner.js) → [`js/biology-score-engine.js`](js/biology-score-engine.js)
@@ -207,7 +209,7 @@ Native browser modules shipped with the static application.
 - [`js/biology-score-persistence.js`](js/biology-score-persistence.js) → no in-scope imports
 - [`js/biology-score-profile-modifiers.js`](js/biology-score-profile-modifiers.js) → [`js/marker-context-ranges.js`](js/marker-context-ranges.js)
 - [`js/biology-score-render.js`](js/biology-score-render.js) → [`js/biology-score-coverage-planner.js`](js/biology-score-coverage-planner.js), [`js/biology-score-engine.js`](js/biology-score-engine.js), [`js/biology-score-panel-policy.js`](js/biology-score-panel-policy.js), [`js/biology-score-sections.js`](js/biology-score-sections.js), [`js/lens-page-shell.js`](js/lens-page-shell.js), [`js/profile-context.js`](js/profile-context.js), [`js/utils.js`](js/utils.js)
-- [`js/biology-score-sections.js`](js/biology-score-sections.js) → [`js/biology-score-contract.js`](js/biology-score-contract.js), [`js/biology-score-engine.js`](js/biology-score-engine.js), [`js/biology-score-inputs.js`](js/biology-score-inputs.js), [`js/biology-score-persistence.js`](js/biology-score-persistence.js), [`js/data.js`](js/data.js), [`js/demo-biology-insights.js`](js/demo-biology-insights.js), [`js/markdown.js`](js/markdown.js), [`js/profile.js`](js/profile.js), [`js/state.js`](js/state.js), [`js/utils.js`](js/utils.js)
+- [`js/biology-score-sections.js`](js/biology-score-sections.js) → [`js/biology-score-contract.js`](js/biology-score-contract.js), [`js/biology-score-engine.js`](js/biology-score-engine.js), [`js/biology-score-inputs.js`](js/biology-score-inputs.js), [`js/biology-score-persistence.js`](js/biology-score-persistence.js), [`js/crypto.js`](js/crypto.js), [`js/data.js`](js/data.js), [`js/demo-biology-insights.js`](js/demo-biology-insights.js), [`js/markdown.js`](js/markdown.js), [`js/profile.js`](js/profile.js), [`js/state.js`](js/state.js), [`js/utils.js`](js/utils.js)
 - [`js/biology-score-thyroid.js`](js/biology-score-thyroid.js) → [`js/biology-score-engine.js`](js/biology-score-engine.js)
 - [`js/biology-score-tier1-definitions.js`](js/biology-score-tier1-definitions.js) → no in-scope imports
 - [`js/biology-score-tier2-definitions.js`](js/biology-score-tier2-definitions.js) → no in-scope imports
@@ -309,7 +311,7 @@ Native browser modules shipped with the static application.
 
 <details><summary><code>chat</code> family — 61 modules</summary>
 
-- [`js/chat-actions.js`](js/chat-actions.js) → [`js/agent-drafts.js`](js/agent-drafts.js), [`js/chat-composer.js`](js/chat-composer.js), [`js/chat-history.js`](js/chat-history.js), [`js/chat-icons.js`](js/chat-icons.js), [`js/chat-images.js`](js/chat-images.js), [`js/chat-message-action-attrs.js`](js/chat-message-action-attrs.js), [`js/chat-runtime.js`](js/chat-runtime.js), [`js/cli-agent-brand-assets.js`](js/cli-agent-brand-assets.js), [`js/emf-runtime.js`](js/emf-runtime.js), [`js/state.js`](js/state.js), [`js/utils.js`](js/utils.js)
+- [`js/chat-actions.js`](js/chat-actions.js) → [`js/agent-draft-claims.js`](js/agent-draft-claims.js), [`js/agent-drafts.js`](js/agent-drafts.js), [`js/chat-history.js`](js/chat-history.js), [`js/chat-icons.js`](js/chat-icons.js), [`js/chat-images.js`](js/chat-images.js), [`js/chat-message-action-attrs.js`](js/chat-message-action-attrs.js), [`js/chat-runtime.js`](js/chat-runtime.js), [`js/cli-agent-brand-assets.js`](js/cli-agent-brand-assets.js), [`js/emf-runtime.js`](js/emf-runtime.js), [`js/state.js`](js/state.js), [`js/utils.js`](js/utils.js)
 - [`js/chat-attestation.js`](js/chat-attestation.js) → [`js/utils.js`](js/utils.js)
 - [`js/chat-backend-selection.js`](js/chat-backend-selection.js) → [`js/agent-chat-settings.js`](js/agent-chat-settings.js), [`js/agent-model-catalog.js`](js/agent-model-catalog.js), [`js/api.js`](js/api.js)
 - [`js/chat-composer.js`](js/chat-composer.js) → [`js/chat-draft-storage.js`](js/chat-draft-storage.js), [`js/state.js`](js/state.js)
@@ -396,7 +398,7 @@ Native browser modules shipped with the static application.
 
 <details><summary><code>cloud</code> family — 1 module</summary>
 
-- [`js/cloud-ai-consent.js`](js/cloud-ai-consent.js) → [`js/ai-provider-policy.js`](js/ai-provider-policy.js), [`js/deployment-policy.js`](js/deployment-policy.js)
+- [`js/cloud-ai-consent.js`](js/cloud-ai-consent.js) → [`js/ai-provider-policy.js`](js/ai-provider-policy.js), [`js/app-extension-runtime.js`](js/app-extension-runtime.js), [`js/deployment-policy.js`](js/deployment-policy.js)
 
 </details>
 
@@ -459,13 +461,14 @@ Native browser modules shipped with the static application.
 
 </details>
 
-<details><summary><code>cycle</code> family — 9 modules</summary>
+<details><summary><code>cycle</code> family — 10 modules</summary>
 
 - [`js/cycle-draw-phases.js`](js/cycle-draw-phases.js) → no in-scope imports
 - [`js/cycle-import-adapters.js`](js/cycle-import-adapters.js) → [`js/cycle-summary.js`](js/cycle-summary.js)
 - [`js/cycle-import-file.js`](js/cycle-import-file.js) → [`js/caught-error.js`](js/caught-error.js)
 - [`js/cycle-import-loader.js`](js/cycle-import-loader.js) → [`js/cycle-import.js`](js/cycle-import.js) *(dynamic)*, [`js/cycle-summary.js`](js/cycle-summary.js), [`js/utils.js`](js/utils.js)
-- [`js/cycle-import.js`](js/cycle-import.js) → [`js/caught-error.js`](js/caught-error.js), [`js/context-cards-runtime.js`](js/context-cards-runtime.js), [`js/cycle-import-adapters.js`](js/cycle-import-adapters.js), [`js/cycle-import-file.js`](js/cycle-import-file.js), [`js/cycle-runtime.js`](js/cycle-runtime.js), [`js/cycle-store.js`](js/cycle-store.js), [`js/cycle-summary.js`](js/cycle-summary.js), [`js/data-merge.js`](js/data-merge.js), [`js/data.js`](js/data.js), [`js/modal-lifecycle.js`](js/modal-lifecycle.js), [`js/profile.js`](js/profile.js), [`js/state.js`](js/state.js), [`js/tour.js`](js/tour.js), [`js/utils.js`](js/utils.js), [`js/wearables-apple-health.js`](js/wearables-apple-health.js) *(dynamic)*
+- [`js/cycle-import-mutations.js`](js/cycle-import-mutations.js) → [`js/caught-error.js`](js/caught-error.js), [`js/context-cards-runtime.js`](js/context-cards-runtime.js), [`js/cycle-runtime.js`](js/cycle-runtime.js), [`js/cycle-store.js`](js/cycle-store.js), [`js/cycle-summary.js`](js/cycle-summary.js), [`js/data-merge.js`](js/data-merge.js), [`js/data.js`](js/data.js), [`js/profile.js`](js/profile.js), [`js/state.js`](js/state.js)
+- [`js/cycle-import.js`](js/cycle-import.js) → [`js/caught-error.js`](js/caught-error.js), [`js/cycle-import-adapters.js`](js/cycle-import-adapters.js), [`js/cycle-import-file.js`](js/cycle-import-file.js), [`js/cycle-import-mutations.js`](js/cycle-import-mutations.js), [`js/cycle-runtime.js`](js/cycle-runtime.js), [`js/cycle-summary.js`](js/cycle-summary.js), [`js/modal-lifecycle.js`](js/modal-lifecycle.js), [`js/state.js`](js/state.js), [`js/tour.js`](js/tour.js), [`js/utils.js`](js/utils.js), [`js/wearables-apple-health.js`](js/wearables-apple-health.js) *(dynamic)*
 - [`js/cycle-runtime.js`](js/cycle-runtime.js) → [`js/utils.js`](js/utils.js)
 - [`js/cycle-store.js`](js/cycle-store.js) → no in-scope imports
 - [`js/cycle-summary.js`](js/cycle-summary.js) → no in-scope imports
@@ -640,8 +643,8 @@ Native browser modules shipped with the static application.
 - [`js/import-benchmarks.js`](js/import-benchmarks.js) → [`js/api.js`](js/api.js), [`js/data.js`](js/data.js), [`js/local-ai-discovery.js`](js/local-ai-discovery.js), [`js/state.js`](js/state.js), [`js/unique-id.js`](js/unique-id.js)
 - [`js/import-commit-validation.js`](js/import-commit-validation.js) → [`js/lab-entry.js`](js/lab-entry.js), [`js/pdf-import-unit-conversions.js`](js/pdf-import-unit-conversions.js), [`js/schema.js`](js/schema.js)
 - [`js/import-drop-zone-runtime.js`](js/import-drop-zone-runtime.js) → [`js/dna-runtime-bridge.js`](js/dna-runtime-bridge.js), [`js/export-loader.js`](js/export-loader.js), [`js/pdf-import-progress.js`](js/pdf-import-progress.js), [`js/utils.js`](js/utils.js)
-- [`js/import-drop-zone.js`](js/import-drop-zone.js) → [`js/import-drop-zone-runtime.js`](js/import-drop-zone-runtime.js), [`js/import-loader.js`](js/import-loader.js)
-- [`js/import-file-input.js`](js/import-file-input.js) → [`js/import-drop-zone-runtime.js`](js/import-drop-zone-runtime.js), [`js/import-loader.js`](js/import-loader.js)
+- [`js/import-drop-zone.js`](js/import-drop-zone.js) → [`js/import-drop-zone-runtime.js`](js/import-drop-zone-runtime.js), [`js/import-loader.js`](js/import-loader.js), [`js/pdf-import-progress.js`](js/pdf-import-progress.js), [`js/state.js`](js/state.js)
+- [`js/import-file-input.js`](js/import-file-input.js) → [`js/import-drop-zone-runtime.js`](js/import-drop-zone-runtime.js), [`js/import-loader.js`](js/import-loader.js), [`js/pdf-import-progress.js`](js/pdf-import-progress.js), [`js/state.js`](js/state.js)
 - [`js/import-loader.js`](js/import-loader.js) → [`js/health-data-loader.js`](js/health-data-loader.js), [`js/import-review-draft.js`](js/import-review-draft.js), [`js/modal-lifecycle.js`](js/modal-lifecycle.js), [`js/pdf-import-review.js`](js/pdf-import-review.js) *(dynamic)*, [`js/pdf-import.js`](js/pdf-import.js) *(dynamic)*
 - [`js/import-marker-map-modal.js`](js/import-marker-map-modal.js) → [`js/adapters.js`](js/adapters.js), [`js/modal-lifecycle.js`](js/modal-lifecycle.js), [`js/pdf-import-marker-mapping.js`](js/pdf-import-marker-mapping.js), [`js/schema.js`](js/schema.js), [`js/utils.js`](js/utils.js)
 - [`js/import-reference-benchmark.js`](js/import-reference-benchmark.js) → [`js/api.js`](js/api.js), [`js/caught-error.js`](js/caught-error.js), [`js/import-benchmarks.js`](js/import-benchmarks.js), [`js/import-loader.js`](js/import-loader.js), [`js/pdf-import-ai-utils.js`](js/pdf-import-ai-utils.js), [`js/pdf-import-marker-mapping.js`](js/pdf-import-marker-mapping.js), [`js/schema.js`](js/schema.js)
@@ -663,7 +666,7 @@ Native browser modules shipped with the static application.
 
 </details>
 
-<details><summary><code>lab</code> family — 12 modules</summary>
+<details><summary><code>lab</code> family — 13 modules</summary>
 
 - [`js/lab-context-cache.js`](js/lab-context-cache.js) → [`js/lab-context-settings.js`](js/lab-context-settings.js), [`js/utils.js`](js/utils.js)
 - [`js/lab-context-change-timeline.js`](js/lab-context-change-timeline.js) → [`js/context-source-registry.js`](js/context-source-registry.js), [`js/lab-context-output.js`](js/lab-context-output.js)
@@ -677,6 +680,7 @@ Native browser modules shipped with the static application.
 - [`js/lab-entry-mutations.js`](js/lab-entry-mutations.js) → [`js/data-merge.js`](js/data-merge.js), [`js/lab-entry.js`](js/lab-entry.js)
 - [`js/lab-entry-restore.js`](js/lab-entry-restore.js) → [`js/data-merge-lab-entries.js`](js/data-merge-lab-entries.js), [`js/lab-entry.js`](js/lab-entry.js)
 - [`js/lab-entry.js`](js/lab-entry.js) → no in-scope imports
+- [`js/lab-vitamin-d-context.js`](js/lab-vitamin-d-context.js) → no in-scope imports
 
 </details>
 
@@ -750,7 +754,7 @@ Native browser modules shipped with the static application.
 - [`js/light-sun-ai-hooks.js`](js/light-sun-ai-hooks.js) → [`js/light-device-ai-analysis.js`](js/light-device-ai-analysis.js), [`js/light-devices-store.js`](js/light-devices-store.js), [`js/sun-ai-analysis.js`](js/sun-ai-analysis.js), [`js/sun-sessions-store.js`](js/sun-sessions-store.js)
 - [`js/light-sun-analysis-runtime.js`](js/light-sun-analysis-runtime.js) → no in-scope imports
 - [`js/light-sun-loader.js`](js/light-sun-loader.js) → [`js/app-light-sun-modules.js`](js/app-light-sun-modules.js) *(dynamic)*, [`js/light-device-ai-analysis.js`](js/light-device-ai-analysis.js) *(dynamic)*, [`js/light-sun-analysis-runtime.js`](js/light-sun-analysis-runtime.js), [`js/state.js`](js/state.js), [`js/sun-ai-analysis.js`](js/sun-ai-analysis.js) *(dynamic)*
-- [`js/light-today-ai.js`](js/light-today-ai.js) → [`js/ai-action-delegates.js`](js/ai-action-delegates.js), [`js/ai-feature-routing.js`](js/ai-feature-routing.js), [`js/ai-verdict-engine.js`](js/ai-verdict-engine.js), [`js/health-goals-utils.js`](js/health-goals-utils.js), [`js/light-devices-store.js`](js/light-devices-store.js), [`js/lighting-hardware-caveats.js`](js/lighting-hardware-caveats.js), [`js/state.js`](js/state.js), [`js/sun-uvdata.js`](js/sun-uvdata.js), [`js/sun.js`](js/sun.js), [`js/utils.js`](js/utils.js)
+- [`js/light-today-ai.js`](js/light-today-ai.js) → [`js/ai-action-delegates.js`](js/ai-action-delegates.js), [`js/ai-feature-routing.js`](js/ai-feature-routing.js), [`js/ai-verdict-engine.js`](js/ai-verdict-engine.js), [`js/health-goals-utils.js`](js/health-goals-utils.js), [`js/lab-vitamin-d-context.js`](js/lab-vitamin-d-context.js), [`js/light-devices-store.js`](js/light-devices-store.js), [`js/lighting-hardware-caveats.js`](js/lighting-hardware-caveats.js), [`js/state.js`](js/state.js), [`js/sun-uvdata.js`](js/sun-uvdata.js), [`js/sun.js`](js/sun.js), [`js/utils.js`](js/utils.js)
 - [`js/light-tool-camera-modal-runtime.js`](js/light-tool-camera-modal-runtime.js) → no in-scope imports
 - [`js/light-tool-camera-modals.js`](js/light-tool-camera-modals.js) → [`js/light-tool-camera-modal-runtime.js`](js/light-tool-camera-modal-runtime.js), [`js/light-tool-cct-meter.js`](js/light-tool-cct-meter.js), [`js/light-tool-darkness-meter.js`](js/light-tool-darkness-meter.js), [`js/light-tool-flicker-detector.js`](js/light-tool-flicker-detector.js), [`js/light-tool-glass-transmission.js`](js/light-tool-glass-transmission.js), [`js/light-tool-lux-meter.js`](js/light-tool-lux-meter.js), [`js/light-tool-spectrum-classifier.js`](js/light-tool-spectrum-classifier.js)
 - [`js/light-tool-camera.js`](js/light-tool-camera.js) → [`js/utils.js`](js/utils.js)
@@ -1123,7 +1127,7 @@ Native browser modules shipped with the static application.
 
 <details><summary><code>sun</code> family — 34 modules</summary>
 
-- [`js/sun-active-session-format.js`](js/sun-active-session-format.js) → no in-scope imports
+- [`js/sun-active-session-format.js`](js/sun-active-session-format.js) → [`js/utils.js`](js/utils.js)
 - [`js/sun-active-session.js`](js/sun-active-session.js) → [`js/modal-lifecycle.js`](js/modal-lifecycle.js), [`js/state.js`](js/state.js), [`js/sun-active-session-format.js`](js/sun-active-session-format.js), [`js/sun-body-silhouette.js`](js/sun-body-silhouette.js), [`js/sun-session-actions.js`](js/sun-session-actions.js), [`js/sun-session-model.js`](js/sun-session-model.js), [`js/sun-session-ui.js`](js/sun-session-ui.js), [`js/utils.js`](js/utils.js)
 - [`js/sun-ai-analysis.js`](js/sun-ai-analysis.js) → [`js/ai-action-delegates.js`](js/ai-action-delegates.js), [`js/ai-feature-routing.js`](js/ai-feature-routing.js), [`js/ai-verdict-engine.js`](js/ai-verdict-engine.js), [`js/sun-defaults.js`](js/sun-defaults.js), [`js/sun-uvdata.js`](js/sun-uvdata.js), [`js/sun.js`](js/sun.js), [`js/utils.js`](js/utils.js)
 - [`js/sun-body-silhouette-runtime.js`](js/sun-body-silhouette-runtime.js) → [`js/profile.js`](js/profile.js)
@@ -1141,7 +1145,7 @@ Native browser modules shipped with the static application.
 - [`js/sun-defaults-setup-ui.js`](js/sun-defaults-setup-ui.js) → [`js/constants.js`](js/constants.js), [`js/modal-lifecycle.js`](js/modal-lifecycle.js), [`js/sun-defaults-model.js`](js/sun-defaults-model.js), [`js/sun-defaults-runtime.js`](js/sun-defaults-runtime.js), [`js/sun-defaults-setup-renderer.js`](js/sun-defaults-setup-renderer.js), [`js/utils.js`](js/utils.js)
 - [`js/sun-defaults.js`](js/sun-defaults.js) → [`js/constants.js`](js/constants.js), [`js/data.js`](js/data.js), [`js/state.js`](js/state.js), [`js/sun-defaults-model.js`](js/sun-defaults-model.js), [`js/sun-defaults-setup-ui.js`](js/sun-defaults-setup-ui.js)
 - [`js/sun-location.js`](js/sun-location.js) → [`js/constants.js`](js/constants.js), [`js/profile.js`](js/profile.js), [`js/state.js`](js/state.js), [`js/sun-runtime.js`](js/sun-runtime.js), [`js/utils.js`](js/utils.js)
-- [`js/sun-onboarding-ai.js`](js/sun-onboarding-ai.js) → [`js/ai-action-delegates.js`](js/ai-action-delegates.js), [`js/ai-feature-routing.js`](js/ai-feature-routing.js), [`js/ai-verdict-engine.js`](js/ai-verdict-engine.js), [`js/health-goals-utils.js`](js/health-goals-utils.js), [`js/lighting-hardware-caveats.js`](js/lighting-hardware-caveats.js), [`js/state.js`](js/state.js), [`js/sun-defaults-runtime.js`](js/sun-defaults-runtime.js), [`js/utils.js`](js/utils.js)
+- [`js/sun-onboarding-ai.js`](js/sun-onboarding-ai.js) → [`js/ai-action-delegates.js`](js/ai-action-delegates.js), [`js/ai-feature-routing.js`](js/ai-feature-routing.js), [`js/ai-verdict-engine.js`](js/ai-verdict-engine.js), [`js/health-goals-utils.js`](js/health-goals-utils.js), [`js/lab-vitamin-d-context.js`](js/lab-vitamin-d-context.js), [`js/lighting-hardware-caveats.js`](js/lighting-hardware-caveats.js), [`js/state.js`](js/state.js), [`js/sun-defaults-runtime.js`](js/sun-defaults-runtime.js), [`js/utils.js`](js/utils.js)
 - [`js/sun-runtime.js`](js/sun-runtime.js) → [`js/state.js`](js/state.js), [`js/utils.js`](js/utils.js)
 - [`js/sun-session-actions.js`](js/sun-session-actions.js) → [`js/modal-lifecycle.js`](js/modal-lifecycle.js), [`js/utils.js`](js/utils.js)
 - [`js/sun-session-ai-render-hooks.js`](js/sun-session-ai-render-hooks.js) → [`js/sun-ai-analysis.js`](js/sun-ai-analysis.js), [`js/sun-session-ui.js`](js/sun-session-ui.js)
@@ -1383,7 +1387,7 @@ Native browser modules shipped with the static application.
 
 </details>
 
-<details><summary><code>wearables</code> family — 38 modules</summary>
+<details><summary><code>wearables</code> family — 39 modules</summary>
 
 - [`js/wearables-apple-health-runtime.js`](js/wearables-apple-health-runtime.js) → no in-scope imports
 - [`js/wearables-apple-health.js`](js/wearables-apple-health.js) → [`js/caught-error.js`](js/caught-error.js), [`js/data.js`](js/data.js), [`js/profile.js`](js/profile.js), [`js/state.js`](js/state.js), [`js/utils.js`](js/utils.js), [`js/wearable-adapters.js`](js/wearable-adapters.js), [`js/wearables-apple-health-runtime.js`](js/wearables-apple-health-runtime.js), [`js/wearables-connect.js`](js/wearables-connect.js) *(dynamic)*, [`js/wearables-store.js`](js/wearables-store.js), [`js/wearables-summary.js`](js/wearables-summary.js)
@@ -1403,7 +1407,8 @@ Native browser modules shipped with the static application.
 - [`js/wearables-google-health.js`](js/wearables-google-health.js) → [`js/caught-error.js`](js/caught-error.js), [`js/proxy-runtime.js`](js/proxy-runtime.js), [`js/utils.js`](js/utils.js)
 - [`js/wearables-manual-detail.js`](js/wearables-manual-detail.js) → [`js/caught-error.js`](js/caught-error.js), [`js/profile.js`](js/profile.js), [`js/state.js`](js/state.js), [`js/utils.js`](js/utils.js), [`js/wearable-adapters.js`](js/wearable-adapters.js), [`js/wearables-detail-runtime.js`](js/wearables-detail-runtime.js), [`js/wearables-formatters.js`](js/wearables-formatters.js), [`js/wearables-manual-form-ui.js`](js/wearables-manual-form-ui.js), [`js/wearables-manual.js`](js/wearables-manual.js)
 - [`js/wearables-manual-form-ui.js`](js/wearables-manual-form-ui.js) → [`js/utils.js`](js/utils.js)
-- [`js/wearables-manual.js`](js/wearables-manual.js) → [`js/data.js`](js/data.js), [`js/state.js`](js/state.js), [`js/wearable-adapters.js`](js/wearable-adapters.js), [`js/wearables-connect.js`](js/wearables-connect.js) *(dynamic)*, [`js/wearables-formatters.js`](js/wearables-formatters.js), [`js/wearables-store.js`](js/wearables-store.js), [`js/wearables-summary.js`](js/wearables-summary.js)
+- [`js/wearables-manual-lock.js`](js/wearables-manual-lock.js) → no in-scope imports
+- [`js/wearables-manual.js`](js/wearables-manual.js) → [`js/data.js`](js/data.js), [`js/state.js`](js/state.js), [`js/wearable-adapters.js`](js/wearable-adapters.js), [`js/wearables-connect.js`](js/wearables-connect.js) *(dynamic)*, [`js/wearables-formatters.js`](js/wearables-formatters.js), [`js/wearables-manual-lock.js`](js/wearables-manual-lock.js), [`js/wearables-store.js`](js/wearables-store.js), [`js/wearables-summary.js`](js/wearables-summary.js)
 - [`js/wearables-oura-auth.js`](js/wearables-oura-auth.js) → [`js/proxy-runtime.js`](js/proxy-runtime.js), [`js/utils.js`](js/utils.js), [`js/wearables-auth-runtime.js`](js/wearables-auth-runtime.js)
 - [`js/wearables-oura.js`](js/wearables-oura.js) → [`js/caught-error.js`](js/caught-error.js), [`js/proxy-runtime.js`](js/proxy-runtime.js), [`js/utils.js`](js/utils.js), [`js/wearable-adapters.js`](js/wearable-adapters.js)
 - [`js/wearables-polar-auth.js`](js/wearables-polar-auth.js) → [`js/proxy-runtime.js`](js/proxy-runtime.js), [`js/utils.js`](js/utils.js), [`js/wearables-auth-runtime.js`](js/wearables-auth-runtime.js)
@@ -1412,7 +1417,7 @@ Native browser modules shipped with the static application.
 - [`js/wearables-settings-groups.js`](js/wearables-settings-groups.js) → no in-scope imports
 - [`js/wearables-settings-panel.js`](js/wearables-settings-panel.js) → [`js/brand-assets.js`](js/brand-assets.js), [`js/caught-error.js`](js/caught-error.js), [`js/profile.js`](js/profile.js), [`js/state.js`](js/state.js), [`js/url-safety.js`](js/url-safety.js), [`js/utils.js`](js/utils.js), [`js/wearable-adapters.js`](js/wearable-adapters.js), [`js/wearables-apple-health.js`](js/wearables-apple-health.js) *(dynamic)*, [`js/wearables-connect.js`](js/wearables-connect.js), [`js/wearables-manual.js`](js/wearables-manual.js), [`js/wearables-settings-groups.js`](js/wearables-settings-groups.js), [`js/wearables-settings-runtime.js`](js/wearables-settings-runtime.js), [`js/wearables-store.js`](js/wearables-store.js), [`js/wearables-summary.js`](js/wearables-summary.js), [`js/wearables-whoop-storage.js`](js/wearables-whoop-storage.js) *(dynamic)*
 - [`js/wearables-settings-runtime.js`](js/wearables-settings-runtime.js) → [`js/settings-runtime-bridge.js`](js/settings-runtime-bridge.js), [`js/utils.js`](js/utils.js)
-- [`js/wearables-store.js`](js/wearables-store.js) → [`js/wearables-whoop-storage.js`](js/wearables-whoop-storage.js) *(dynamic)*
+- [`js/wearables-store.js`](js/wearables-store.js) → [`js/wearables-manual-lock.js`](js/wearables-manual-lock.js), [`js/wearables-whoop-storage.js`](js/wearables-whoop-storage.js) *(dynamic)*
 - [`js/wearables-strip-actions.js`](js/wearables-strip-actions.js) → [`js/caught-error.js`](js/caught-error.js), [`js/data.js`](js/data.js), [`js/profile.js`](js/profile.js), [`js/state.js`](js/state.js), [`js/utils.js`](js/utils.js), [`js/wearable-adapters.js`](js/wearable-adapters.js), [`js/wearables-connect.js`](js/wearables-connect.js), [`js/wearables-detail-modal.js`](js/wearables-detail-modal.js), [`js/wearables-formatters.js`](js/wearables-formatters.js), [`js/wearables-manual-form-ui.js`](js/wearables-manual-form-ui.js), [`js/wearables-manual.js`](js/wearables-manual.js), [`js/wearables-runtime.js`](js/wearables-runtime.js), [`js/wearables-summary.js`](js/wearables-summary.js)
 - [`js/wearables-summary.js`](js/wearables-summary.js) → [`js/caught-error.js`](js/caught-error.js), [`js/data-merge.js`](js/data-merge.js), [`js/nutrition-store.js`](js/nutrition-store.js) *(dynamic)*, [`js/state.js`](js/state.js), [`js/utils.js`](js/utils.js), [`js/wearable-adapters.js`](js/wearable-adapters.js), [`js/wearables-store.js`](js/wearables-store.js)
 - [`js/wearables-ultrahuman-auth.js`](js/wearables-ultrahuman-auth.js) → [`js/proxy-runtime.js`](js/proxy-runtime.js), [`js/utils.js`](js/utils.js), [`js/wearables-auth-runtime.js`](js/wearables-auth-runtime.js)
@@ -1491,19 +1496,20 @@ Node-only policy and transport code shared by hosted runtimes.
 
 </details>
 
-<details><summary><code>agent</code> family — 5 modules</summary>
+<details><summary><code>agent</code> family — 6 modules</summary>
 
 - [`lib/agent-host-boundary.js`](lib/agent-host-boundary.js) → [`shared/agent-tool-contract.js`](shared/agent-tool-contract.js)
 - [`lib/agent-host-external-turn.js`](lib/agent-host-external-turn.js) → no in-scope imports
 - [`lib/agent-host-service.js`](lib/agent-host-service.js) → [`lib/agent-host-boundary.js`](lib/agent-host-boundary.js), [`lib/agent-host-external-turn.js`](lib/agent-host-external-turn.js), [`lib/companion-management.js`](lib/companion-management.js), [`shared/agent-host-protocol.js`](shared/agent-host-protocol.js)
 - [`lib/agent-host-storage.js`](lib/agent-host-storage.js) → no in-scope imports
 - [`lib/agent-mcp-bridge.js`](lib/agent-mcp-bridge.js) → no in-scope imports
+- [`lib/agent-process-lifecycle.js`](lib/agent-process-lifecycle.js) → no in-scope imports
 
 </details>
 
 <details><summary><code>claude</code> family — 1 module</summary>
 
-- [`lib/claude-agent-client.js`](lib/claude-agent-client.js) → no in-scope imports
+- [`lib/claude-agent-client.js`](lib/claude-agent-client.js) → [`lib/agent-process-lifecycle.js`](lib/agent-process-lifecycle.js)
 
 </details>
 
@@ -1514,9 +1520,10 @@ Node-only policy and transport code shared by hosted runtimes.
 
 </details>
 
-<details><summary><code>companion</code> family — 5 modules</summary>
+<details><summary><code>companion</code> family — 6 modules</summary>
 
 - [`lib/companion-existing.js`](lib/companion-existing.js) → no in-scope imports
+- [`lib/companion-http.js`](lib/companion-http.js) → no in-scope imports
 - [`lib/companion-install.js`](lib/companion-install.js) → [`lib/linux-companion-install.js`](lib/linux-companion-install.js), [`lib/macos-companion-install.js`](lib/macos-companion-install.js), [`lib/windows-companion-install.js`](lib/windows-companion-install.js)
 - [`lib/companion-listener.js`](lib/companion-listener.js) → no in-scope imports
 - [`lib/companion-management.js`](lib/companion-management.js) → no in-scope imports
@@ -1565,7 +1572,7 @@ Node-only policy and transport code shared by hosted runtimes.
 
 <details><summary><code>openclaw</code> family — 1 module</summary>
 
-- [`lib/openclaw-agent-client.js`](lib/openclaw-agent-client.js) → [`lib/read-bounded-file.js`](lib/read-bounded-file.js)
+- [`lib/openclaw-agent-client.js`](lib/openclaw-agent-client.js) → [`lib/agent-process-lifecycle.js`](lib/agent-process-lifecycle.js), [`lib/read-bounded-file.js`](lib/read-bounded-file.js)
 
 </details>
 
@@ -1631,7 +1638,7 @@ Standalone loopback companion for installed CLI agents.
 
 <details><summary><code>agent</code> family — 1 module</summary>
 
-- [`server/agent-host-server.js`](server/agent-host-server.js) → [`lib/acp-agent-client.js`](lib/acp-agent-client.js), [`lib/agent-host-service.js`](lib/agent-host-service.js), [`lib/agent-host-storage.js`](lib/agent-host-storage.js), [`lib/claude-agent-client.js`](lib/claude-agent-client.js), [`lib/codex-agent-isolation.js`](lib/codex-agent-isolation.js), [`lib/codex-app-server-client.js`](lib/codex-app-server-client.js), [`lib/companion-listener.js`](lib/companion-listener.js), [`lib/companion-runtime-control.js`](lib/companion-runtime-control.js), [`lib/hermes-gateway-client.js`](lib/hermes-gateway-client.js), [`lib/local-agent-registry.js`](lib/local-agent-registry.js), [`lib/openclaw-agent-client.js`](lib/openclaw-agent-client.js)
+- [`server/agent-host-server.js`](server/agent-host-server.js) → [`lib/acp-agent-client.js`](lib/acp-agent-client.js), [`lib/agent-host-service.js`](lib/agent-host-service.js), [`lib/agent-host-storage.js`](lib/agent-host-storage.js), [`lib/claude-agent-client.js`](lib/claude-agent-client.js), [`lib/codex-agent-isolation.js`](lib/codex-agent-isolation.js), [`lib/codex-app-server-client.js`](lib/codex-app-server-client.js), [`lib/companion-http.js`](lib/companion-http.js), [`lib/companion-listener.js`](lib/companion-listener.js), [`lib/companion-runtime-control.js`](lib/companion-runtime-control.js), [`lib/hermes-gateway-client.js`](lib/hermes-gateway-client.js), [`lib/local-agent-registry.js`](lib/local-agent-registry.js), [`lib/openclaw-agent-client.js`](lib/openclaw-agent-client.js)
 
 </details>
 

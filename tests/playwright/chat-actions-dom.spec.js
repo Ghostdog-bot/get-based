@@ -236,12 +236,26 @@ test('chat action browser coverage handles copy and regenerate branches', async 
       chatActions.copyMessage(1);
       await flush();
       outcomes.copyMessageSuccessWritesAndMarksCopied =
-        copied[0] === 'Assistant answer'
+        copied[0] === 'Assistant answer\n\nAI-generated'
         && successBtn.textContent.includes('Copied')
         && timers.some(timer => timer.delay === 1500);
       timers.pop()?.fn();
       outcomes.copyMessageSuccessResetTimerRestoresCopy = successBtn.textContent.includes('Copy');
       successBtn.remove();
+
+      state.chatHistory.push(
+        { role: 'assistant', content: 'Provider unavailable', error: true },
+        { role: 'assistant', content: 'Partial answer', stopped: true },
+        { role: 'assistant', content: 'Output limit reached', truncated: true, agentId: 'grok' },
+      );
+      chatActions.copyMessage(2);
+      chatActions.copyMessage(3);
+      chatActions.copyMessage(4);
+      await flush();
+      outcomes.copyErrorsWithoutAttributionButKeepPartialOutputLabels =
+        copied[1] === 'Provider unavailable'
+        && copied[2] === 'Partial answer\n\nAI-generated'
+        && copied[3] === 'Output limit reached\n\nWritten with Grok';
 
       Object.defineProperty(navigator, 'clipboard', {
         configurable: true,
@@ -275,32 +289,34 @@ test('chat action browser coverage handles copy and regenerate branches', async 
       previousChatRuntime = chatRuntime.configureChatRuntimeCallbacks({
         isChatStreaming: () => true,
         renderChatMessages: () => { renderCount += 1; },
-        sendChatMessage: () => { sendCount += 1; },
+        sendChatMessage: ({ prepareRetry, retry }) => { prepareRetry(); sendCount += 1; state.chatHistory.push({ role: 'user', content: retry.content }); },
       });
       state.currentThreadId = null;
       state.chatHistory = [
         { role: 'user', content: 'Streaming guard' },
         { role: 'assistant', content: 'Still streaming' },
       ];
-      chatActions.regenerateLastMessage();
+      await chatActions.regenerateLastMessage();
       outcomes.regenerateSkipsWhileStreaming = renderCount === 0
         && sendCount === 0
         && state.chatHistory.length === 2;
 
       chatRuntime.configureChatRuntimeCallbacks({ isChatStreaming: () => false });
+      state.currentThreadId = saved.currentThreadId || 'retry-browser-test';
       state.chatHistory = [
         { role: 'assistant', content: 'Earlier assistant' },
         { role: 'user', content: 'Repeat this prompt' },
         { role: 'assistant', content: 'Regenerate me' },
       ];
-      chatActions.regenerateLastMessage();
+      await chatActions.regenerateLastMessage();
       outcomes.regeneratePopsLastPairAndResends =
         renderCount === 1
         && sendCount === 1
-        && input.value === 'Repeat this prompt'
-        && state.chatHistory.length === 1
+        && state.chatHistory.at(-1).content === 'Repeat this prompt'
+        && state.chatHistory.length === 2
         && state.chatHistory[0].content === 'Earlier assistant';
     } finally {
+      if (!saved.currentThreadId) localStorage.removeItem(chatThreads.getChatThreadKey('retry-browser-test'));
       state.chatHistory = saved.chatHistory;
       state.currentThreadId = saved.currentThreadId;
       if (previousChatRuntime) chatRuntime.configureChatRuntimeCallbacks(previousChatRuntime);
@@ -324,4 +340,22 @@ test('chat action browser coverage handles copy and regenerate branches', async 
   for (const [name, passed] of Object.entries(results)) {
     expect(passed, name).toBe(true);
   }
+});
+
+test('copy ignores discussion join events without message content', async ({ page }) => {
+  await page.goto('/app');
+  const copied = await page.evaluate(async () => {
+    const { state } = await import('/js/state.js');
+    state.chatHistory = [{ joined: true, joinName: 'Synthetic persona' }];
+    const writes = [];
+    const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { writes.push(text); } } });
+    try { (await import('/js/chat-actions.js')).copyMessage(0); }
+    finally {
+      if (descriptor) Object.defineProperty(navigator, 'clipboard', descriptor);
+      else delete navigator.clipboard;
+    }
+    return writes;
+  });
+  expect(copied).toEqual([]);
 });

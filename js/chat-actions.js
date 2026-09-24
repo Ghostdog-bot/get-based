@@ -20,9 +20,9 @@ import {
 } from './chat-message-action-attrs.js';
 import { getChatRegenerateCallbacks, isChatRuntimeStreaming } from './chat-runtime.js';
 import { openEMFAssessmentEditor } from './emf-runtime.js';
-import { setChatInputValue } from './chat-composer.js';
-import { restoreMessageAttachments } from './chat-images.js';
+import { getMessageAttachments } from './chat-images.js';
 import { applyAgentDraft, renderAgentDraftCards } from './agent-drafts.js';
+import { claimAgentDraft } from './agent-draft-claims.js';
 import { getAIOutputAttribution } from './cli-agent-brand-assets.js';
 
 const chatMessageActionDeps = {
@@ -85,32 +85,62 @@ function containChatMessageEvent(event) {
   if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
 }
 
+const pendingDraftActions = new WeakSet();
+
 async function updateAgentDraft(actionEl, apply) {
   const index = readMessageIndex(actionEl);
   const draftId = actionEl.dataset.chatMessageDraftId || '';
   const message = index == null ? null : state.chatHistory[index];
   const draft = message?.agentDrafts?.find(item => item.id === draftId);
-  if (!draft || draft.status !== 'pending') return false;
-  if (!apply) {
-    draft.status = 'discarded';
-    await saveChatHistory();
-    chatMessageActionDeps.renderChatMessages();
-    showNotification('Proposed change discarded', 'info');
-    return true;
-  }
-  draft.status = 'applying';
-  chatMessageActionDeps.renderChatMessages();
+  if (!draft || draft.status !== 'pending' || pendingDraftActions.has(draft)) return false;
+  pendingDraftActions.add(draft);
+  const profile = state.currentProfile;
+  const thread = state.currentThreadId;
+  const history = state.chatHistory;
+  const isCurrent = () => profile === state.currentProfile && thread === state.currentThreadId && history === state.chatHistory;
+  const refresh = () => { if (isCurrent()) chatMessageActionDeps.renderChatMessages(); };
+  let claimAttempted = false;
+  let mutationStarted = false;
+  let mutationCompleted = false;
   try {
+    // Save the still-pending proposal before taking an irreversible claim.
+    // The in-memory guard rejects duplicate clicks during this preparatory save.
+    // A failure or navigation here leaves no persisted in-flight status.
+    if (!apply) draft.status = 'discarded';
+    refresh();
+    if (!await saveChatHistory()) throw new Error('Could not save the proposal status. No change was applied.');
+    if (!isCurrent()) return true;
+    if (!apply) {
+      showNotification('Proposed change discarded', 'info');
+      return true;
+    }
+    draft.status = 'applying';
+    refresh();
+    claimAttempted = true;
+    await claimAgentDraft(profile, draftId);
+    if (!isCurrent()) { draft.status = 'failed'; return true; }
+    mutationStarted = true;
     const notice = await applyAgentDraft({ ...draft, status: 'pending' });
+    mutationCompleted = true;
     draft.status = 'applied';
     draft.appliedAt = new Date().toISOString();
-    await saveChatHistory();
-    chatMessageActionDeps.renderChatMessages();
-    showNotification(notice, 'success');
+    // The origin retains its durable claim if the user navigated away. Never
+    // save the captured proposal into a different active conversation.
+    if (!isCurrent()) return true;
+    if (!await saveChatHistory()) throw new Error('The change was saved, but its conversation status could not be saved. Check your data before making another proposal.');
+    if (isCurrent()) showNotification(notice, 'success');
   } catch (error) {
-    draft.status = 'pending';
-    chatMessageActionDeps.renderChatMessages();
-    showNotification(error instanceof Error ? error.message : 'The proposed change could not be applied.', 'error');
+    // Mutators can fail after a partial commit. Keep ambiguous outcomes out of
+    // the retry path; the durable applying claim provides the same protection.
+    draft.status = mutationCompleted ? 'applied' : claimAttempted ? 'failed' : 'pending';
+    if (isCurrent()) {
+      showNotification(mutationStarted
+        ? 'Check your data before trying this change again. The proposal could not be fully confirmed.'
+        : error instanceof Error ? error.message : 'The proposal status could not be saved.', 'error');
+    }
+  } finally {
+    pendingDraftActions.delete(draft);
+    refresh();
   }
   return true;
 }
@@ -331,34 +361,77 @@ export function buildForkSourceNotice() {
   return `<div class="chat-fork-notice" role="note"><span>Forked from <strong>${escapeHTML(source.name || 'conversation')}</strong></span><button type="button" ${chatMessageActionAttrs('switch-fork-source', { threadId: source.id })}>View original</button></div>`;
 }
 
-export function regenerateLastMessage() {
-  if (state.chatHistory.length < 2) return;
-  if (isChatRuntimeStreaming()) return;
-  const callbacks = getChatRegenerateCallbacks();
-  if (!callbacks) return;
-  const { renderChatMessages, sendChatMessage } = callbacks;
+let regenerationPending = false;
 
-  const lastUserMsg = state.chatHistory[state.chatHistory.length - 2];
-  if (!lastUserMsg || lastUserMsg.role !== 'user') return;
-  if (lastUserMsg.hasImages && !restoreMessageAttachments(lastUserMsg)) {
-    showNotification(
-      'The original images are no longer available. Attach them again to retry this response.',
-      'info',
-      6000,
-    );
-    return;
-  }
-  state.chatHistory.pop();
-  setChatInputValue(lastUserMsg.content === '(image)' ? '' : lastUserMsg.content);
-  state.chatHistory.pop();
-  void saveChatHistory();
-  renderChatMessages();
-  sendChatMessage();
+export function regenerateLastMessage() {
+  if (regenerationPending || state.chatHistory.length < 2 || isChatRuntimeStreaming()) return undefined;
+  const callbacks = getChatRegenerateCallbacks();
+  if (!callbacks) return undefined;
+  const history = state.chatHistory;
+  const length = history.length;
+  const lastUserMsg = history[length - 2];
+  const lastResponse = history[length - 1];
+  if (!lastUserMsg || lastUserMsg.joined || lastUserMsg.role !== 'user'
+    || lastResponse?.role !== 'assistant') return undefined;
+  const profile = state.currentProfile;
+  const threadId = state.currentThreadId;
+  const input = /** @type {HTMLTextAreaElement | null} */ (document.getElementById('chat-input'));
+  const draft = input?.value;
+  const prefix = history.slice(0, -2);
+  let removed = false;
+  regenerationPending = true;
+  return (async () => {
+    try {
+      // Keep the original turn durable until Send accepts the replacement.
+      if (!await saveChatHistory()) {
+        showNotification('Could not save this conversation. Retry was cancelled to protect your messages.', 'error', 6000);
+        return;
+      }
+      if (profile !== state.currentProfile || threadId !== state.currentThreadId
+        || history !== state.chatHistory || history.length !== length
+        || history[length - 2] !== lastUserMsg || history[length - 1] !== lastResponse
+        || isChatRuntimeStreaming() || input?.value !== draft) return;
+      const attachments = lastUserMsg.hasImages ? getMessageAttachments(lastUserMsg) : [];
+      if (lastUserMsg.hasImages && !attachments.length) {
+        showNotification(
+          'The original images are no longer available. Attach them again to retry this response.',
+          'info', 6000,
+        );
+        return;
+      }
+      await callbacks.sendChatMessage({
+        retry: { content: lastUserMsg.content === '(image)' ? '' : lastUserMsg.content, attachments },
+        prepareRetry: () => {
+        // Send calls this only after approval and route validation. Navigation
+        // during consent must never persist a temporarily shortened transcript.
+        if (profile !== state.currentProfile || threadId !== state.currentThreadId
+          || history !== state.chatHistory || history.length !== length
+          || history[length - 2] !== lastUserMsg || history[length - 1] !== lastResponse) return false;
+        state.chatHistory.pop();
+        state.chatHistory.pop();
+        removed = true;
+        callbacks.renderChatMessages();
+        return true;
+      } });
+    } catch {
+      showNotification('The response could not be retried. Review the conversation and try again.', 'error', 6000);
+    } finally {
+      // Consent refusal, unavailable backends and synchronous send failures can
+      // leave the replacement untouched. Restore only our own unchanged prefix.
+      if (removed && profile === state.currentProfile && threadId === state.currentThreadId
+        && history === state.chatHistory && history.length === prefix.length
+        && prefix.every((message, index) => history[index] === message)) {
+        history.push(lastUserMsg, lastResponse);
+        callbacks.renderChatMessages();
+      }
+      regenerationPending = false;
+    }
+  })();
 }
 
 export function copyMessage(msgIndex) {
   const msg = state.chatHistory[msgIndex];
-  if (!msg) return;
+  if (!msg || msg.joined) return;
   const btn = document.getElementById(`chat-copy-btn-${msgIndex}`);
   if (!navigator.clipboard) {
     if (btn) {

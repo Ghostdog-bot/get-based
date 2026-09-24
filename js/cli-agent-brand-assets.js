@@ -22,12 +22,17 @@ export function renderCLIAgentBrandIcon(agentId) {
   return asset ? `<img src="${asset}" alt="" draggable="false">` : '<span class="local-agent-icon-fallback">CLI</span>';
 }
 
-/** @param {{agentId?: unknown, provider?: unknown, modelId?: unknown, model?: unknown, modelDisplay?: unknown}} [identity] */
+// Call only for known AI output. This visible attribution is not a watermark,
+// provider attestation, or a claim that imported content has been verified.
+/** @param {{agentId?: unknown, provider?: unknown, modelId?: unknown, model?: unknown, modelDisplay?: unknown, error?: unknown}} [identity] */
 export function getAIOutputAttribution(identity = {}) {
+  // Error records contain application/provider diagnostics, not model output.
+  // Stopped or truncated responses remain normal output and retain attribution.
+  if (identity.error) return '';
   const agentId = String(identity.agentId || '').trim().toLowerCase();
   const provider = String(identity.provider || '').trim().toLowerCase();
   const grok = agentId === 'grok' || ['grok', 'xai', 'x-ai'].includes(provider)
     || [identity.modelId, identity.model, identity.modelDisplay]
     .some(value => /(^|[^a-z0-9])grok([^a-z0-9]|$)/i.test(String(value || '')));
-  return grok ? 'Written with Grok' : '';
+  return grok ? 'Written with Grok' : 'AI-generated';
 }
